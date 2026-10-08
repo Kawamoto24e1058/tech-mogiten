@@ -1,5 +1,11 @@
 import type { MenuItem, Order, OrderLine, DaySummary, Closing } from "./types";
-import { DENOMINATIONS } from "./types";
+import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "./types";
+
+/** 商品の色。未設定なら並び順で自動で割り当てる（隣どうしが同じ色になりにくい順） */
+export function menuColor(item: { color: string | null }, index: number) {
+  const key = item.color && MENU_COLORS[item.color] ? item.color : MENU_COLOR_KEYS[index % (MENU_COLOR_KEYS.length - 1)];
+  return MENU_COLORS[key];
+}
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 

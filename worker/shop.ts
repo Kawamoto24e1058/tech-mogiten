@@ -6,7 +6,7 @@ import type {
   ClientMessage, Closing, DisplaySnapshot, MenuItem, NewOrderInput, Op, Order, OrderStatus,
   Role, ServerMessage, ShopPublic, ShopSnapshot,
 } from "../shared/types";
-import { DENOMINATIONS, STAFF_CANCEL_WINDOW_MS } from "../shared/types";
+import { DENOMINATIONS, MENU_COLORS, STAFF_CANCEL_WINDOW_MS } from "../shared/types";
 import type { Env } from "./index";
 
 const DEFAULT_SHOPS: Record<string, { name: string; color: string; prefix: string }> = {
@@ -41,6 +41,11 @@ function json(data: unknown, status = 200): Response {
 async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** 商品の色。空・未知の値は「自動」 */
+function parseColor(v: unknown): string | null {
+  return typeof v === "string" && v in MENU_COLORS ? v : null;
 }
 
 /** 残り数の入力。空欄・null は「数えない」 */
@@ -97,6 +102,7 @@ export class ShopDO extends DurableObject<Env> {
     // 後から追加した列
     const menuCols = this.sql.exec<{ name: string }>("PRAGMA table_info(menu)").toArray().map((r) => r.name);
     if (!menuCols.includes("stock")) this.sql.exec("ALTER TABLE menu ADD COLUMN stock INTEGER");
+    if (!menuCols.includes("color")) this.sql.exec("ALTER TABLE menu ADD COLUMN color TEXT");
   }
 
   // ---------- 設定 ----------
@@ -202,11 +208,12 @@ export class ShopDO extends DurableObject<Env> {
 
   private menu(): MenuItem[] {
     return this.sql
-      .exec("SELECT id, name, price, sold_out, sort, stock FROM menu WHERE active = 1 ORDER BY sort, rowid")
+      .exec("SELECT id, name, price, sold_out, sort, stock, color FROM menu WHERE active = 1 ORDER BY sort, rowid")
       .toArray()
       .map((r) => ({
         id: r.id as string, name: r.name as string, price: r.price as number, soldOut: r.sold_out === 1, sort: r.sort as number,
         stock: (r.stock as number | null) ?? null,
+        color: (r.color as string | null) ?? null,
       }));
   }
 
@@ -549,7 +556,7 @@ export class ShopDO extends DurableObject<Env> {
     }
 
     if (p === "/menu" && m === "POST") {
-      const b = await this.body<{ name: string; price: number; stock?: number | null }>(req);
+      const b = await this.body<{ name: string; price: number; stock?: number | null; color?: string | null }>(req);
       const name = String(b.name ?? "").trim().slice(0, 30);
       const price = Math.floor(Number(b.price));
       if (!name) throw new HttpError(400, "商品名を入力してください");
@@ -557,7 +564,8 @@ export class ShopDO extends DurableObject<Env> {
       const stock = parseStock(b.stock);
       const sort = (this.sql.exec<{ m: number | null }>("SELECT MAX(sort) AS m FROM menu").one().m ?? 0) + 1;
       const id = crypto.randomUUID();
-      this.sql.exec("INSERT INTO menu (id, name, price, sort, stock) VALUES (?, ?, ?, ?, ?)", id, name, price, sort, stock);
+      const color = parseColor(b.color);
+      this.sql.exec("INSERT INTO menu (id, name, price, sort, stock, color) VALUES (?, ?, ?, ?, ?, ?)", id, name, price, sort, stock, color);
       this.audit("menu.add", null, { id, name, price, stock });
       this.broadcast();
       return json(this.adminState(day));
@@ -565,7 +573,8 @@ export class ShopDO extends DurableObject<Env> {
     if ((seg = p.match(/^\/menu\/([^/]+)$/))) {
       const id = decodeURIComponent(seg[1]);
       if (m === "PUT") {
-        const b = await this.body<Partial<{ name: string; price: number; soldOut: boolean; sort: number; stock: number | null }>>(req);
+        const b = await this.body<Partial<{ name: string; price: number; soldOut: boolean; sort: number; stock: number | null; color: string | null }>>(req);
+        if (b.color !== undefined) this.sql.exec("UPDATE menu SET color = ? WHERE id = ?", parseColor(b.color), id);
         if (b.name != null) {
           const name = String(b.name).trim().slice(0, 30);
           if (!name) throw new HttpError(400, "商品名を入力してください");

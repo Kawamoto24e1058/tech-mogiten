@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Order } from "../../shared/types";
-import { ticketLabel, yen } from "../../shared/logic";
+import { menuColor, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Btn, Banner, ConnBadge, Modal, Notices, Page, useIsWide, useNow, useWakeLock } from "../components/ui";
 import type { CSSProperties } from "react";
 import { useConnection, viewMenu, viewOrders } from "../sync";
@@ -45,6 +45,8 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
   }, [cookingIds, sound, snapshot]);
   const label = (o: View) => ticketLabel(shop?.prefix ?? "", o.ticket);
   const set = (o: View, s: Tab) => conn.send({ kind: "setStatus", orderId: o.id, status: s });
+  const menuIndex = new Map((snapshot?.menu ?? []).map((m, i) => [m.id, menuColor(m, i).solid]));
+  const colorOf = (itemId: string) => menuIndex.get(itemId) ?? "#c7cbd1";
 
   const dup = new Set(
     [...cooking, ...ready].filter((o) => o.ticket != null && !o.ticketReleased).map((o) => o.ticket!).filter((t, i, a) => a.indexOf(t) !== i),
@@ -69,7 +71,10 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
         )}
         <ul className="kcard__lines">
           {o.lines.map((l) => (
-            <li key={l.itemId}><span>{l.name}</span><b>×{l.qty}</b></li>
+            <li key={l.itemId}>
+              <span><i className="swatch" style={{ background: colorOf(l.itemId) }} aria-hidden />{l.name}</span>
+              <b>×{l.qty}</b>
+            </li>
           ))}
         </ul>
         {o.status === "cooking" && <Btn variant="ok" big onClick={() => set(o, "ready")}>できた</Btn>}

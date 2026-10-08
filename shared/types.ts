@@ -8,6 +8,8 @@ export interface MenuItem {
   sort: number;
   /** 残り数。null なら数えない */
   stock: number | null;
+  /** 商品の色（MENU_COLORS のキー）。null なら並び順で自動 */
+  color: string | null;
 }
 
 export interface OrderLine {
@@ -111,6 +113,24 @@ export interface Closing {
 }
 
 export const DENOMINATIONS = [10000, 5000, 1000, 500, 100, 50, 10, 5, 1] as const;
+
+/**
+ * 商品の色。レジのボタンと厨房の伝票で同じ色を使い、目で探しやすくする。
+ * 文字は濃い色のまま、背景はうすい色（tint）にするので、どの色でも文字は読める。
+ */
+export const MENU_COLORS: Record<string, { label: string; solid: string; tint: string }> = {
+  red: { label: "赤", solid: "#e5484d", tint: "#feebec" },
+  orange: { label: "オレンジ", solid: "#f76b15", tint: "#ffefd6" },
+  yellow: { label: "黄", solid: "#e2a400", tint: "#fff7c2" },
+  green: { label: "緑", solid: "#30a46c", tint: "#e6f6eb" },
+  teal: { label: "青緑", solid: "#12a594", tint: "#e0f8f3" },
+  blue: { label: "青", solid: "#0090ff", tint: "#e6f4fe" },
+  purple: { label: "紫", solid: "#8e4ec6", tint: "#f7edfe" },
+  pink: { label: "ピンク", solid: "#d6409f", tint: "#fee9f5" },
+  brown: { label: "茶", solid: "#ad7f58", tint: "#f8efe6" },
+  gray: { label: "灰", solid: "#8b8d98", tint: "#f0f0f3" },
+};
+export const MENU_COLOR_KEYS = Object.keys(MENU_COLORS);
 
 /** レジから取り消せる時間（これを過ぎたら管理画面から） */
 export const STAFF_CANCEL_WINDOW_MS = 5 * 60 * 1000;

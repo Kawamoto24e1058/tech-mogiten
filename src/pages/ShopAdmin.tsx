@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DaySummary, MenuItem, Order, ShopPublic } from "../../shared/types";
-import { DENOMINATIONS } from "../../shared/types";
-import { ticketLabel, yen } from "../../shared/logic";
+import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "../../shared/types";
+import { menuColor, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
 import { ItemRanking, Kpis, SlotBars, SubStats } from "../components/Summary";
 import { api, ApiError, timeOf, todayJst } from "../util";
@@ -273,12 +273,14 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [color, setColor] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const open = (m: MenuItem | "new") => {
     setEditing(m);
     setName(m === "new" ? "" : m.name);
     setPrice(m === "new" ? "" : String(m.price));
     setStock(m === "new" || m.stock == null ? "" : String(m.stock));
+    setColor(m === "new" ? null : m.color);
     setConfirmDelete(false);
   };
   const move = async (i: number, d: number) => {
@@ -295,9 +297,10 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
       <section className="panel">
         <h3 className="panel__title">メニュー <span className="muted">{st.menu.length}品</span></h3>
         <ul className="menu-rows">
-          {st.menu.map((m) => (
+          {st.menu.map((m, i) => (
             <li key={m.id}>
               <button className="menu-row" onClick={() => open(m)}>
+                <i className="swatch swatch--lg" style={{ background: menuColor(m, i).solid }} aria-hidden />
                 <span className="menu-row__name">{m.name}</span>
                 {m.stock != null && <span className={`menu-row__stock ${m.stock <= 10 ? "is-low" : ""}`}>残り{m.stock}</span>}
                 <span className="menu-row__price">{m.price < 0 ? `−${yen(-m.price)}` : yen(m.price)}</span>
@@ -324,14 +327,34 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           <form onSubmit={async (e) => {
             e.preventDefault();
             const ok = editing === "new"
-              ? await mutate("/menu", "POST", { name, price: Number(price), stock: stock === "" ? null : Number(stock) }, `「${name}」を追加しました`)
-              : await mutate(`/menu/${editing.id}`, "PUT", { name, price: Number(price), stock: stock === "" ? null : Number(stock) }, `「${name}」を保存しました`);
+              ? await mutate("/menu", "POST", { name, price: Number(price), stock: stock === "" ? null : Number(stock), color }, `「${name}」を追加しました`)
+              : await mutate(`/menu/${editing.id}`, "PUT", { name, price: Number(price), stock: stock === "" ? null : Number(stock), color }, `「${name}」を保存しました`);
             if (ok) setEditing(null);
           }}>
             <label className="field">商品名<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 焼きそば" autoFocus /></label>
             <label className="field">価格<small className="muted">割引はマイナスで入力（例: -100）</small>
               <span className="input-unit"><input className="input" inputMode="text" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d-]/g, "").replace(/(?!^)-/g, ""))} placeholder="400" />円</span>
             </label>
+            <div className="field">色<small className="muted">レジのボタンと厨房の伝票に出ます。似た商品は別の色にすると間違えにくくなります</small>
+              <div className="color-chips" role="radiogroup" aria-label="商品の色">
+                <button type="button" className={`color-chip color-chip--auto ${color == null ? "is-on" : ""}`} role="radio" aria-checked={color == null} onClick={() => setColor(null)}>自動</button>
+                {MENU_COLOR_KEYS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={`color-chip ${color === k ? "is-on" : ""}`}
+                    role="radio"
+                    aria-checked={color === k}
+                    aria-label={MENU_COLORS[k].label}
+                    title={MENU_COLORS[k].label}
+                    style={{ background: MENU_COLORS[k].solid }}
+                    onClick={() => setColor(k)}
+                  >
+                    {color === k && "✓"}
+                  </button>
+                ))}
+              </div>
+            </div>
             <label className="field">残り数<small className="muted">用意した数を入れると、売れるたびに減り、0 で自動的に売り切れになります。数えないときは空欄</small>
               <span className="input-unit"><input className="input" inputMode="numeric" value={stock} onChange={(e) => setStock(e.target.value.replace(/\D/g, ""))} placeholder="空欄" />個</span>
             </label>

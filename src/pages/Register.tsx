@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { changeBreakdown, holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
+import { changeBreakdown, menuColor, holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
 import { RegisterHistory } from "../components/RegisterHistory";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
 import { IconBack, IconBackspace, IconMinus, IconPlus } from "../components/icons";
@@ -182,7 +182,11 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         const low = !m.soldOut && m.stock != null && m.stock <= LOW_STOCK;
         const discount = m.price < 0;
         return (
-          <div key={m.id} className={`menu-card ${m.soldOut ? "is-soldout" : ""} ${qty ? "is-selected" : ""} ${discount ? "is-discount" : ""}`} style={{ "--i": i } as CSSProperties}>
+          <div
+            key={m.id}
+            className={`menu-card ${m.soldOut ? "is-soldout" : ""} ${qty ? "is-selected" : ""} ${discount ? "is-discount" : ""}`}
+            style={{ "--tile": menuColor(m, i).solid, "--tile-tint": menuColor(m, i).tint } as CSSProperties}
+          >
             <button
               className="menu-card__main"
               disabled={m.soldOut || limit}

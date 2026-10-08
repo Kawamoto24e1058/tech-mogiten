@@ -126,12 +126,17 @@ export function Btn({
 
 export function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  // onClose は描き直すたびに新しい関数になるので、最新のものを ref で持つ。
+  // 依存に入れると、文字を打つたびにフォーカスが入力欄から外れてしまう。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
-    ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // 開いたときに1回だけ。入力欄が autoFocus で選ばれていれば、そのままにする
+    if (ref.current && !ref.current.contains(document.activeElement)) ref.current.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseRef.current();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>

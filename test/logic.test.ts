@@ -38,7 +38,7 @@ describe("番号札", () => {
 
 describe("明細", () => {
   it("確定時点の名前と単価を保存し、不正な行を除く", () => {
-    const menu = [{ id: "a", name: "焼きそば", price: 400, soldOut: false, sort: 0, stock: null }];
+    const menu = [{ id: "a", name: "焼きそば", price: 400, soldOut: false, sort: 0, stock: null, color: null }];
     expect(buildLines(menu, [{ itemId: "a", qty: 2 }, { itemId: "z", qty: 1 }, { itemId: "a", qty: 0 }])).toEqual([
       { itemId: "a", name: "焼きそば", price: 400, qty: 2 },
     ]);
