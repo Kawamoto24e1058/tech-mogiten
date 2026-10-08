@@ -39,6 +39,7 @@
   --f-mono: "JetBrains Mono", ui-monospace, monospace;
   font-family: var(--f-body);
   line-height: 1.6;
+  font-feature-settings: "palt";
   -webkit-text-size-adjust: 100%;
 }
 
@@ -565,3 +566,135 @@ b, strong { font-weight: 900; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* =====================================================================
+ * 作業する画面（レジ・厨房・管理）は静かにする
+ *   同じ操作を何百回も繰り返す画面では、装飾が金額や番号と注意を取り合う。
+ *   強調するのは「金額」「札番号」「次に押すボタン」の3つだけにし、それ以外は線を細く、影と動きをなくす。
+ *   屋台らしさ（方眼・はんこ・太い影・ずらす動き）は、トップ・合言葉・呼び出し表示にだけ残す。
+ * ===================================================================== */
+.page--work {
+  --edge: #8a8173; /* 枠線。紙の上で 3:1 以上 */
+  --line-thin: 1.5px solid var(--edge);
+  background-image: none; background-color: #f5efe3;
+}
+.page--work b, .page--work strong { font-weight: 700; }
+.page--work * { animation: none !important; }
+
+/* ヘッダー */
+.page--work .appbar { border-bottom-width: 1.5px; }
+.page--work .appbar__title { border: 0; padding: 0; font-weight: 700; opacity: 0.9; }
+.page--work .appbar__btn, .page--work .conn { border-width: 1.5px; box-shadow: none; font-weight: 700; }
+.page--work .shop-badge { border-width: 1.5px; }
+
+/* ボタン：枠は細く、影は主要なボタンだけ */
+.page--work .btn { border: var(--line-thin); box-shadow: none; font-weight: 700; }
+.page--work .btn:active:not(:disabled) { transform: scale(0.98); background-color: #ece3cf; }
+.page--work .btn--accent, .page--work .btn--ok { border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+.page--work .btn--accent:active:not(:disabled) { background-color: var(--accent); filter: brightness(0.9); transform: translate(3px, 3px); box-shadow: none; }
+.page--work .btn--ok:active:not(:disabled) { background-color: var(--ok); filter: brightness(0.9); transform: translate(3px, 3px); box-shadow: none; }
+.page--work .btn--ghost { border-color: transparent; }
+.page--work .btn:disabled { background: #e7dfcd; border-color: #b9b0a0; }
+.page--work .link { font-weight: 700; text-decoration-thickness: 1.5px; }
+.page--work .banner { border-width: 1.5px; font-weight: 700; }
+.page--work .tag { border-width: 1.5px; font-weight: 700; }
+.page--work .input { border: var(--line-thin); }
+.page--work .field, .page--work .input-unit, .page--work .day-select { font-weight: 700; }
+
+/* メニュー：名前と値段だけを読ませる */
+.page--work .menu-grid { gap: 10px; }
+.page--work .menu-card { border: var(--line-thin); box-shadow: none; }
+.page--work .menu-card:has(.menu-card__main:active:not(:disabled)) { transform: scale(0.98); box-shadow: none; background: #ece3cf; }
+.page--work .menu-card__name { font-weight: 700; }
+.page--work .menu-card__price { padding: 0; background: none; color: var(--ink-soft); font: 400 1rem var(--f-mono); }
+.page--work .menu-card.is-selected { border: 2.5px solid var(--accent); box-shadow: none; background: color-mix(in srgb, var(--accent) 7%, #fbf6ea); }
+.page--work .menu-card__qty { top: 10px; right: 10px; min-width: 32px; height: 32px; border: 0; font: 700 1rem/1 var(--f-mono); }
+.page--work .menu-card.is-selected .menu-card__name { padding-right: 36px; }
+.page--work .menu-card__minus { border: var(--line-thin); box-shadow: none; border-radius: 50%; }
+.page--work .menu-card.is-soldout { background: transparent; border: 1.5px dashed var(--edge); }
+.page--work .menu-card.is-soldout .menu-card__price { color: var(--danger); font: 700 0.95rem var(--f-body); }
+.page--work .bottom-bar .btn--big { border-color: var(--paper); box-shadow: none; }
+.page--work .bottom-bar__count, .page--work .bottom-bar .link { font-weight: 700; }
+.page--work .register-wide .menu-card__qty { top: 10px; bottom: auto; }
+.page--work .register-wide .menu-card.is-selected .menu-card__name { padding-right: 36px; }
+
+/* お会計：レシートの装飾をやめ、お釣りの表示窓だけを目立たせる */
+.page--work .pay { border: var(--line-thin); border-radius: var(--r); padding: 18px; filter: none; -webkit-mask: none; mask: none; background: #fffdf7; }
+.page--work .pay__sum { border-bottom: 1px solid var(--rule); }
+.page--work .pay__line, .page--work .pay__ticket, .page--work .pay__items, .page--work .back-link { font-weight: 700; }
+.page--work .pay__ticket { border-top: 1px solid var(--rule); }
+.page--work .pay__ticket b { font: 700 1.5rem var(--f-mono); }
+.page--work .chip { border: var(--line-thin); box-shadow: none; font-weight: 700; }
+.page--work .chip:nth-child(1), .page--work .chip:last-child { font-weight: 700; }
+.page--work .chip.is-on { transform: none; }
+.page--work .key { border: var(--line-thin); box-shadow: none; font-weight: 400; }
+.page--work .key:active { transform: none; background: #ece3cf; }
+.page--work .order-list, .page--work .stepper button { border: var(--line-thin); box-shadow: none; }
+.page--work .order-list li { border-top: 1px solid var(--rule); }
+.page--work .order-list__head h2 { font: 700 1.05rem var(--f-body); }
+.page--work .order-list__name { font-weight: 700; }
+
+/* 会計完了：札番号だけを大きく */
+.page--work .done__lead { font: 700 1.3rem var(--f-body); }
+.page--work .done__ticket { -webkit-mask: none; mask: none; border: 2.5px solid var(--ink); box-shadow: none; padding: 26px 48px 18px; }
+.page--work .done__ticket::before { height: 10px; border-bottom: 0; }
+.page--work .done__stamp { display: none; }
+.page--work .done__change { font-weight: 700; }
+
+/* 厨房：番号と内容とボタンだけ */
+.page--work .segmented { border: var(--line-thin); box-shadow: none; }
+.page--work .segmented button { font-weight: 700; }
+.page--work .segmented button + button { border-left: var(--line-thin); }
+.page--work .kcol__title { font: 700 1.05rem var(--f-body); }
+.page--work .kcol__empty { border: 1.5px dashed var(--edge); font-weight: 700; }
+.page--work .kcard { border: var(--line-thin); box-shadow: none; border-left: 8px solid var(--edge); }
+.page--work .kcard--cooking { border-left-color: #d9a300; }
+.page--work .kcard--ready { border-left-color: var(--ok); }
+.page--work .kcard__head { border-bottom: 1px solid var(--rule); background: none; color: var(--ink); }
+.page--work .kcard--cooking .kcard__head, .page--work .kcard--ready .kcard__head { background: none; color: var(--ink); }
+.page--work .pill { border-width: 1.5px; font-weight: 700; }
+.page--work .kcard--cooking .pill { background: #fbeeb8; border-color: #b58800; color: #4a3800; }
+.page--work .kcard--ready .pill { background: var(--ok); border-color: var(--ok); color: #fff; }
+.page--work .kcard__time { font-weight: 400; color: var(--ink-soft); }
+.page--work .kcard__time.is-late { color: #fff; font-weight: 700; }
+.page--work .kcard__lines li { font-weight: 700; }
+.page--work .kcard__lines span::after { border-bottom: 1px dotted var(--edge); }
+.page--work .kcard__lines b { font-weight: 700; }
+.page--work .handed { border: var(--line-thin); }
+.page--work .handed li + li { border-top: 1px solid var(--rule); }
+.page--work .handed b { font: 700 1rem var(--f-mono); }
+
+/* モーダル */
+.page--work .modal { border: var(--line-thin); box-shadow: none; }
+.page--work .modal__head { border-bottom: 1px solid var(--rule); }
+.page--work .modal__title { font: 700 1.2rem var(--f-body); }
+.page--work .modal__close { border: var(--line-thin); }
+.page--work .modal__summary { font-weight: 700; }
+.page--work .ticket { border: var(--line-thin); box-shadow: none; font: 700 1.2rem var(--f-mono); }
+.page--work .handover__ticket { border: 2.5px solid var(--ink); box-shadow: inset 0 10px 0 var(--accent); }
+.page--work .handover__lines { font-weight: 700; }
+.page--work .handover__lines li, .page--work .toggle-list li { border-top: 1px solid var(--rule); font-weight: 700; }
+.page--work .switch { border: var(--line-thin); box-shadow: none; font-weight: 700; }
+.page--work .switch.is-off { border-color: var(--danger); }
+
+/* 管理 */
+.page--work .tabbar { border-bottom: var(--line-thin); gap: 0; padding: 0 8px; }
+.page--work .tabbar button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; margin-bottom: -1.5px; padding: 8px 4px 6px; font-weight: 700; color: var(--ink-soft); }
+.page--work .tabbar button.is-on { border-bottom-color: var(--accent); color: var(--ink); background: none; padding-bottom: 6px; }
+.page--work .panel, .page--work .kpi, .page--work .shop-card { border: var(--line-thin); box-shadow: none; }
+.page--work .panel__title { font: 700 1.05rem var(--f-body); }
+.page--work .kpi > span:first-child { font-weight: 700; }
+.page--work .kpi--main { border-color: var(--ink); }
+.page--work .meter { height: 10px; border: 0; background: #e7dfcd; }
+.page--work .meter span { border: 0; }
+.page--work .ranking__name, .page--work .ranking__amount, .page--work .ranking__qty { font-weight: 700; }
+.page--work .ticket-chip { border: var(--line-thin); box-shadow: none; font: 700 1.1rem/1.2 var(--f-mono); }
+.page--work .ticket-chip--cooking { background: #fbeeb8; }
+.page--work .ticket-chip small { font-weight: 700; }
+.page--work .order-rows li + li, .page--work .menu-rows li + li { border-top: 1px solid var(--rule); }
+.page--work .order-row__items, .page--work .menu-row__name, .page--work .menu-row__edit { font-weight: 700; }
+.page--work .order-row__no, .page--work .order-row__total, .page--work .menu-row__price { font-weight: 400; }
+.page--work .diff { border-width: 1.5px; font-weight: 700; }
+.page--work .closing-state { border: var(--line-thin); font-weight: 700; }
+.page--work .shop-card__head { border-bottom-width: 1.5px; }
+.page--work .shop-card__head h2 { font: 700 1.2rem var(--f-body); }

@@ -32,7 +32,7 @@ export function MasterAdmin({ code, onAuthError }: { code: string; onAuthError: 
   const count = data?.reduce((s, d) => s + d.summary.orderCount, 0) ?? 0;
 
   return (
-    <Page shop={CLUB}>
+    <Page shop={CLUB} className="page--work">
       <AppBar shop={CLUB} title="全体の売上" back="/" right={<button className="appbar__btn" onClick={() => void load()}>更新</button>} />
       <main className="admin">
         <label className="day-select">

@@ -97,7 +97,7 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
   const days = Array.from(new Set([todayJst(), ...(st?.days ?? [])])).sort().reverse();
 
   return (
-    <Page shop={shop}>
+    <Page shop={shop} className="page--work">
       <AppBar shop={shop} title="管理" back="/" right={<button className="appbar__btn" onClick={() => void refresh()}>更新</button>} />
       <nav className="tabbar" aria-label="管理メニュー">
         {TABS.map(([k, label]) => (

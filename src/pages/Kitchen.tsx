@@ -96,7 +96,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
   const soldOutCount = menu.filter((m) => m.soldOut).length;
 
   return (
-    <Page shop={shop}>
+    <Page shop={shop} className="page--work">
       <AppBar
         shop={shop}
         title="厨房"

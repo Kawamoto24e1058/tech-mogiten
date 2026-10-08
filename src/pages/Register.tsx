@@ -90,7 +90,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   if (!snapshot) {
     return (
-      <Page shop={shop}>
+      <Page shop={shop} className="page--work">
         {appbar}
         <main className="empty-state">
           <p>お店の情報を読み込んでいます…</p>
@@ -102,7 +102,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   if (done) {
     return (
-      <Page shop={shop}>
+      <Page shop={shop} className="page--work">
         {appbar}
         <main className="done">
           <p className="done__lead">この札を渡してください</p>
@@ -146,9 +146,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
               aria-label={`${m.name} ${yen(m.price)}${m.soldOut ? " 売り切れ" : ""}${qty ? ` 現在${qty}個` : ""}`}
             >
               <span className="menu-card__name">{m.name}</span>
-              <span className="menu-card__price">{yen(m.price)}</span>
+              <span className="menu-card__price">{m.soldOut ? "売り切れ" : yen(m.price)}</span>
             </button>
-            {m.soldOut && <span className="stamp menu-card__soldout">売切</span>}
             {qty > 0 && (
               <>
                 <span className="menu-card__qty" aria-hidden>{qty}</span>
@@ -235,7 +234,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   if (wide) {
     return (
-      <Page shop={shop}>
+      <Page shop={shop} className="page--work">
         {appbar}
         {banners}
         <main className="register-wide">
@@ -274,7 +273,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   }
 
   return (
-    <Page shop={shop}>
+    <Page shop={shop} className="page--work">
       {appbar}
       {banners}
       {step === "order" ? (
