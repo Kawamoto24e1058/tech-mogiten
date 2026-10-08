@@ -1,6 +1,8 @@
-// wrangler dev に対する通し確認（node scripts/smoke.mjs [baseUrl]）
-const BASE = process.argv[2] ?? "http://localhost:8787";
-const MASTER = process.env.MASTER_PIN ?? "tech-master-0000";
+// 開発サーバーに対する通し確認。注文がまだない状態で実行する。
+//   rm -rf .wrangler/state && npm run dev   （別のターミナルで）
+//   npm run smoke
+const BASE = process.argv[2] ?? "http://localhost:5173";
+const MASTER = process.env.MASTER_PIN ?? "0000";
 let failed = 0;
 const check = (cond, msg) => { console.log(`${cond ? "OK  " : "NG  "} ${msg}`); if (!cond) failed++; };
 
@@ -40,10 +42,12 @@ check((await req(`${A}/auth`, { method: "POST", body: { code: "yakisoba" } })).d
 check((await req(`${B}/admin/state`, { code: "1234" })).status === 401, "A店の管理PINではB店を管理できない");
 check((await req(`${A}/admin/state`, { code: "yakisoba" })).status === 403, "合言葉だけでは管理画面を使えない");
 
-let st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "焼きそば", price: 400 } })).data;
-st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "ジュース", price: 150 } })).data;
-check(st.menu.length === 2, "メニューを2件登録");
-const [yakisoba, juice] = st.menu;
+const before = (await req(`${A}/admin/state`, { code: "1234" })).data.menu.length;
+let st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "テスト焼きそば", price: 400 } })).data;
+st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "テストジュース", price: 150 } })).data;
+check(st.menu.length === before + 2, "メニューを2件登録");
+const yakisoba = st.menu.find((m) => m.name === "テスト焼きそば");
+const juice = st.menu.find((m) => m.name === "テストジュース");
 await req(`${A}/admin/settings`, { code: "1234", method: "PUT", body: { ticketCount: 3 } });
 
 const reg = socket("a", "register", "yakisoba");
@@ -80,7 +84,7 @@ kit.ws.send(JSON.stringify({ type: "op", opId: "k1", op: { kind: "setStatus", or
 await kit.until((m) => m.type === "ack" && m.opId === "k1");
 const d = await disp.until((m) => m.type === "display" && m.data.ready.length > 0);
 check(d.data.ready[0].ticket === "A-1", "「できた」で呼び出し表示に A-1 が出る");
-check(!JSON.stringify(d).includes("焼きそば"), "呼び出し表示には注文内容を送らない");
+check(!JSON.stringify(d).includes("テスト焼きそば"), "呼び出し表示には注文内容を送らない");
 
 kit.ws.send(JSON.stringify({ type: "op", opId: "k2", op: { kind: "setStatus", orderId: o.id, status: "handed" } }));
 await kit.until((m) => m.type === "ack" && m.opId === "k2");
@@ -106,7 +110,7 @@ check(closing.closing.diff === 0, "レジ締めの差額0円");
 
 const csvBytes = new Uint8Array(await fetch(`${BASE}${A}/admin/csv`, { headers: { authorization: "Bearer 1234" } }).then((r) => r.arrayBuffer()));
 const csv = new TextDecoder().decode(csvBytes);
-check(csvBytes[0] === 0xef && csvBytes[1] === 0xbb && csvBytes[2] === 0xbf && csv.startsWith("注文番号") && csv.includes("焼きそば"), "CSVを書き出せる（BOM付き）");
+check(csvBytes[0] === 0xef && csvBytes[1] === 0xbb && csvBytes[2] === 0xbf && csv.startsWith("注文番号") && csv.includes("テスト焼きそば"), "CSVを書き出せる（BOM付き）");
 
 const master = await req(`/api/master/summary`, { code: MASTER });
 check(master.status === 200 && master.data.length === 2 && master.data[0].summary.sales === 950 && master.data[1].summary.sales === 0, "全体の売上で2店舗を別々に集計");

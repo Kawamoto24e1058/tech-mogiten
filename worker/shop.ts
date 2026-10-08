@@ -13,6 +13,10 @@ const DEFAULT_SHOPS: Record<string, { name: string; color: string; prefix: strin
   a: { name: "A店", color: "#1d4ed8", prefix: "A" },
   b: { name: "B店", color: "#c2410c", prefix: "B" },
 };
+const DEMO_MENUS: Record<string, [string, number][]> = {
+  a: [["焼きそば", 400], ["焼きそば 大盛り", 500], ["フランクフルト", 300], ["ラムネ", 150]],
+  b: [["チョコバナナクレープ", 350], ["いちごクレープ", 400], ["タピオカミルクティー", 300], ["ホットコーヒー", 150]],
+};
 /** 渡した後も厨房画面に残す時間（取り消し用） */
 const RECENT_HANDED_MS = 10 * 60 * 1000;
 const AUTH_FAIL_WINDOW_MS = 60 * 1000;
@@ -95,7 +99,7 @@ export class ShopDO extends DurableObject<Env> {
     else this.sql.exec("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value);
   }
 
-  private ensureShopId(id: string) {
+  private async ensureShopId(id: string) {
     if (!this.get("shopId")) {
       const d = DEFAULT_SHOPS[id] ?? { name: `${id.toUpperCase()}店`, color: "#334155", prefix: id.toUpperCase() };
       this.set("shopId", id);
@@ -103,7 +107,16 @@ export class ShopDO extends DurableObject<Env> {
       this.set("color", d.color);
       this.set("prefix", d.prefix);
       this.set("ticketCount", "30");
+      if (this.env.DEV_SEED === "1") await this.seedDemo(id);
     }
+  }
+
+  /** ローカル開発用のデモデータ。合言葉 1111 / 管理PIN 9999 */
+  private async seedDemo(id: string) {
+    this.set("staffHash", await sha256(`${id}:1111`));
+    this.set("adminHash", await sha256(`${id}:9999`));
+    const items = DEMO_MENUS[id] ?? DEMO_MENUS.a;
+    items.forEach(([name, price], i) => this.sql.exec("INSERT INTO menu (id, name, price, sort) VALUES (?, ?, ?, ?)", crypto.randomUUID(), name, price, i + 1));
   }
 
   private shopPublic(): ShopPublic {
@@ -389,7 +402,7 @@ export class ShopDO extends DurableObject<Env> {
     const url = new URL(req.url);
     const shopId = req.headers.get("x-shop-id");
     if (!shopId) throw new HttpError(400, "店舗IDがありません");
-    this.ensureShopId(shopId);
+    await this.ensureShopId(shopId);
     const path = url.pathname.replace(/^\/api\/shops\/[^/]+/, "") || "/";
     const m = req.method;
     const today = businessDay(Date.now());

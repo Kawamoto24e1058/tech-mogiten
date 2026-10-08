@@ -1,1 +1,5 @@
-MASTER_PIN=tech-master-0000
+# ローカル開発用の設定（本番では wrangler secret put MASTER_PIN を使う）
+MASTER_PIN=0000
+# 1 にすると、未設定の店舗にデモ用のメニューと合言葉を自動で入れる
+#   合言葉: 1111 / 管理PIN: 9999 / 全体PIN: 0000
+DEV_SEED=1

@@ -7,6 +7,8 @@ export interface Env {
   SHOPS: string;
   /** テック部全体の管理PIN（wrangler secret put MASTER_PIN で設定） */
   MASTER_PIN?: string;
+  /** "1" のとき、未設定の店舗にデモ用のメニューと合言葉を入れる（ローカル開発用） */
+  DEV_SEED?: string;
 }
 
 function json(data: unknown, status = 200): Response {

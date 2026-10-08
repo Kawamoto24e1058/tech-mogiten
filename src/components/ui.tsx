@@ -1,35 +1,79 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ShopPublic } from "../../shared/types";
 import type { ConnStatus } from "../sync";
 import { api, ApiError, buzz } from "../util";
 
-/** 店舗の色のヘッダー。別の店舗の画面を操作する事故を防ぐため、店舗名を常に表示する。 */
-export function ShopHeader({ shop, title, right }: { shop: Pick<ShopPublic, "name" | "color" | "prefix"> | null; title: string; right?: ReactNode }) {
+type ShopLook = Pick<ShopPublic, "name" | "color" | "prefix">;
+
+/** 背景色の上で読みやすい文字色（白か黒）を選ぶ。管理画面で好きな色を選んでも読めるように。 */
+export function readableOn(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#fff";
+  const n = parseInt(m[1], 16);
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return (1.05) / (L + 0.05) >= 4.5 ? "#fff" : "#111827";
+}
+
+export function accentStyle(color: string | undefined): CSSProperties {
+  const c = color ?? "#334155";
+  return { "--accent": c, "--on-accent": readableOn(c) } as CSSProperties;
+}
+
+/** 画面全体の枠。店舗の色を --accent として子要素に渡す。 */
+export function Page({ shop, children, className = "" }: { shop: ShopLook | null; children: ReactNode; className?: string }) {
   return (
-    <header className="shop-header" style={{ background: shop?.color ?? "#334155" }}>
-      <div className="shop-header__name">
-        {shop?.prefix && <span className="shop-header__prefix" aria-hidden>{shop.prefix}</span>}
-        <span>{shop?.name ?? "読み込み中"}</span>
-        <span className="shop-header__title">{title}</span>
+    <div className={`page ${className}`} style={accentStyle(shop?.color)}>
+      {children}
+    </div>
+  );
+}
+
+export function ShopBadge({ shop, size = "md" }: { shop: ShopLook | null; size?: "md" | "lg" }) {
+  return (
+    <span className={`shop-badge shop-badge--${size}`} aria-hidden>
+      {shop?.prefix || shop?.name.slice(0, 1) || "・"}
+    </span>
+  );
+}
+
+/** 店舗の色のヘッダー。別の店舗の画面を操作する事故を防ぐため、店舗名を常に表示する。 */
+export function AppBar({ shop, title, right, back }: { shop: ShopLook | null; title: string; right?: ReactNode; back?: string }) {
+  return (
+    <header className="appbar">
+      <div className="appbar__left">
+        {back && <a className="appbar__back" href={back} aria-label="戻る">‹</a>}
+        <ShopBadge shop={shop} />
+        <div className="appbar__titles">
+          <span className="appbar__shop">{shop?.name ?? "読み込み中"}</span>
+          {title && <span className="appbar__title">{title}</span>}
+        </div>
       </div>
-      <div className="shop-header__right">{right}</div>
+      <div className="appbar__right">{right}</div>
     </header>
   );
 }
 
-const STATUS_TEXT: Record<ConnStatus, string> = {
-  connecting: "接続中…",
-  online: "オンライン",
-  offline: "オフライン",
-  auth: "合言葉が変わりました",
-};
-
+/** 接続状態。オンラインのときは目立たせず、問題があるときだけ目立たせる。 */
 export function ConnBadge({ status, pending }: { status: ConnStatus; pending: number }) {
-  const label = status === "offline" && pending > 0 ? `オフライン・未送信 ${pending}件` : pending > 0 && status === "online" ? `送信中 ${pending}件` : STATUS_TEXT[status];
+  if (status === "online" && pending === 0) {
+    return (
+      <span className="conn conn--online" role="status">
+        <span className="conn__dot" aria-hidden /><span className="conn__text">オンライン</span>
+      </span>
+    );
+  }
+  const label =
+    status === "offline" ? (pending > 0 ? `オフライン・未送信${pending}件` : "オフライン")
+    : status === "auth" ? "合言葉が変わりました"
+    : status === "connecting" ? "接続中…"
+    : `送信中 ${pending}件`;
   return (
     <span className={`conn conn--${status}`} role="status" aria-live="polite">
-      <span className="conn__dot" aria-hidden>{status === "online" ? "●" : status === "offline" ? "×" : "…"}</span>
-      {label}
+      <span aria-hidden>{status === "offline" ? "!" : "…"}</span>{label}
     </span>
   );
 }
@@ -39,7 +83,7 @@ export function Btn({
 }: {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "default" | "danger" | "ghost" | "ok";
+  variant?: "primary" | "default" | "danger" | "ghost" | "ok" | "accent";
   disabled?: boolean;
   big?: boolean;
   className?: string;
@@ -73,9 +117,22 @@ export function Modal({ title, children, onClose }: { title: string; children: R
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
-        <h2 className="modal__title">{title}</h2>
+        <div className="modal__head">
+          <h2 className="modal__title">{title}</h2>
+          <button className="modal__close" onClick={onClose} aria-label="閉じる">×</button>
+        </div>
         {children}
       </div>
+    </div>
+  );
+}
+
+export function Banner({ kind, children }: { kind: "warn" | "error" | "ok" | "info"; children: ReactNode }) {
+  const icon = { warn: "!", error: "×", ok: "✓", info: "i" }[kind];
+  return (
+    <div className={`banner banner--${kind}`} role={kind === "error" || kind === "warn" ? "alert" : "status"}>
+      <span className="banner__icon" aria-hidden>{icon}</span>
+      <div className="banner__body">{children}</div>
     </div>
   );
 }
@@ -83,12 +140,12 @@ export function Modal({ title, children, onClose }: { title: string; children: R
 export function Notices({ notices, onDismiss }: { notices: { id: string; text: string; kind: "error" | "warn" }[]; onDismiss: (id: string) => void }) {
   if (!notices.length) return null;
   return (
-    <div className="notices" role="alert">
+    <div className="notices">
       {notices.map((n) => (
-        <div key={n.id} className={`notice notice--${n.kind}`}>
-          <span><b>{n.kind === "error" ? "エラー" : "注意"}:</b> {n.text}</span>
-          <Btn variant="ghost" onClick={() => onDismiss(n.id)}>閉じる</Btn>
-        </div>
+        <Banner key={n.id} kind={n.kind}>
+          <span>{n.text}</span>
+          <button className="link" onClick={() => onDismiss(n.id)}>閉じる</button>
+        </Banner>
       ))}
     </div>
   );
@@ -96,15 +153,16 @@ export function Notices({ notices, onDismiss }: { notices: { id: string; text: s
 
 /** 合言葉・PIN の入力。正しければ端末に保存する。 */
 export function CodeGate({
-  shopId, shop, label, minRole, onOk, storageKey, authPath,
+  shopId, shop, title, label, minRole, onOk, storageKey, devHint,
 }: {
-  shopId?: string;
-  shop: Pick<ShopPublic, "name" | "color" | "prefix"> | null;
+  shopId: string;
+  shop: ShopLook | null;
+  title: string;
   label: string;
   minRole: "staff" | "admin" | "master";
   storageKey: string;
   onOk: (code: string) => void;
-  authPath?: string;
+  devHint?: string;
 }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -113,8 +171,7 @@ export function CodeGate({
     setBusy(true);
     setError("");
     try {
-      const path = authPath ?? `/api/shops/${encodeURIComponent(shopId!)}/auth`;
-      const { role } = await api<{ role: string }>(path, null, { method: "POST", body: JSON.stringify({ code }) });
+      const { role } = await api<{ role: string }>(`/api/shops/${encodeURIComponent(shopId)}/auth`, null, { method: "POST", body: JSON.stringify({ code }) });
       const rank = { staff: 1, admin: 2, master: 3 } as Record<string, number>;
       if (rank[role] < rank[minRole]) {
         setError(minRole === "admin" ? "これはレジ・厨房用の合言葉です。管理PINを入力してください" : "権限が足りません");
@@ -129,24 +186,26 @@ export function CodeGate({
     }
   };
   return (
-    <div className="page">
-      <ShopHeader shop={shop} title="" />
-      <main className="gate">
-        <form
-          className="gate__form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit();
-          }}
-        >
-          <label htmlFor="code" className="gate__label">{label}</label>
-          <input id="code" className="input input--big" type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
-          {error && <p className="error" role="alert">{error}</p>}
-          <Btn type="submit" variant="primary" big disabled={!code || busy}>{busy ? "確認中…" : "はじめる"}</Btn>
-          <p className="hint">一度入力すると、この端末では次から入力不要です。</p>
-        </form>
-      </main>
-    </div>
+    <Page shop={shop} className="page--center">
+      <form
+        className="gate"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <ShopBadge shop={shop} size="lg" />
+        <div className="gate__shop">{shop?.name}</div>
+        <h1 className="gate__title">{title}</h1>
+        <label htmlFor="code" className="gate__label">{label}</label>
+        <input id="code" className="input input--big" type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
+        {error && <p className="error" role="alert">{error}</p>}
+        <Btn type="submit" variant="accent" big disabled={!code || busy}>{busy ? "確認中…" : "はじめる"}</Btn>
+        <p className="hint">この端末では、次から入力不要です。</p>
+        {import.meta.env.DEV && devHint && <p className="dev-hint">開発用: {devHint}</p>}
+        <a className="link gate__home" href="/">トップに戻る</a>
+      </form>
+    </Page>
   );
 }
 
@@ -178,4 +237,16 @@ export function useNow(intervalMs = 15000) {
     return () => clearInterval(t);
   }, [intervalMs]);
   return now;
+}
+
+export function useIsWide(minWidth = 900) {
+  const q = `(min-width: ${minWidth}px)`;
+  const [wide, setWide] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(q);
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [q]);
+  return wide;
 }

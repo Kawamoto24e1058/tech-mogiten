@@ -25,7 +25,18 @@ function cachedShop(shopId: string): ShopPublic | null {
 function StaffScreen({ shopId, screen }: { shopId: string; screen: "register" | "kitchen" }) {
   const [code, setCode, clear] = useStoredCode(codeKey(shopId));
   if (!code) {
-    return <CodeGate shopId={shopId} shop={cachedShop(shopId)} label="お店の合言葉を入力してください" minRole="staff" storageKey={codeKey(shopId)} onOk={setCode} />;
+    return (
+      <CodeGate
+        shopId={shopId}
+        shop={cachedShop(shopId)}
+        title={screen === "register" ? "レジ" : "厨房"}
+        label="お店の合言葉"
+        minRole="staff"
+        storageKey={codeKey(shopId)}
+        onOk={setCode}
+        devHint="合言葉は 1111"
+      />
+    );
   }
   return screen === "register" ? <Register shopId={shopId} code={code} onAuthError={clear} /> : <Kitchen shopId={shopId} code={code} onAuthError={clear} />;
 }
@@ -35,7 +46,18 @@ function AdminScreen({ shopId }: { shopId: string }) {
   const master = localStorage.getItem(MASTER_KEY);
   const effective = code ?? master;
   if (!effective) {
-    return <CodeGate shopId={shopId} shop={cachedShop(shopId)} label="管理PIN（またはテック部の全体PIN）を入力してください" minRole="admin" storageKey={adminKey(shopId)} onOk={setCode} />;
+    return (
+      <CodeGate
+        shopId={shopId}
+        shop={cachedShop(shopId)}
+        title="管理"
+        label="管理PIN（またはテック部の全体PIN）"
+        minRole="admin"
+        storageKey={adminKey(shopId)}
+        onOk={setCode}
+        devHint="管理PINは 9999、全体PINは 0000"
+      />
+    );
   }
   return <ShopAdmin shopId={shopId} code={effective} onAuthError={() => { clear(); if (!code) localStorage.removeItem(MASTER_KEY); location.reload(); }} />;
 }
@@ -47,8 +69,10 @@ function MasterScreen() {
     return (
       <CodeGate
         shopId={shops[0]?.id ?? "a"}
-        shop={{ name: "テック部", color: "#0f172a", prefix: "" }}
-        label="テック部の全体PINを入力してください"
+        shop={{ name: "テック部", color: "#111827", prefix: "T" }}
+        title="全体の売上"
+        label="テック部の全体PIN"
+        devHint="全体PINは 0000"
         minRole="master"
         storageKey={MASTER_KEY}
         onOk={setCode}

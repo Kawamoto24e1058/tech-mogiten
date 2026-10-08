@@ -33,18 +33,28 @@ B店は `/b/...` です。
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # ローカル用の全体PINを設定
-npm run dev                      # ビルドして http://localhost:8787 で起動
+npm run dev
 ```
 
-画面だけを素早く直したいときは、別のターミナルで `npm run dev:client` を動かすと Vite（http://localhost:5173）から API を wrangler dev に中継します。
+http://localhost:5173 を開くと、画面と API（Worker・Durable Object）がまとめて動きます。コードを保存すると画面が自動で更新されます。
+同じ Wi-Fi のスマホからは、ターミナルに表示される `Network:` のURLで開けます。
+
+初回は `.dev.vars` が自動で作られ、デモ用のメニューと合言葉が入ります。
+
+| 用途 | ローカル用の値 |
+|---|---|
+| レジ・厨房の合言葉 | `1111` |
+| 店舗の管理PIN | `9999` |
+| テック部の全体PIN | `0000` |
+
+データを最初からやり直したいときは、`npm run dev` を止めて `.wrangler/state` を削除してください。
 
 ### 確認
 
 ```bash
 npm run typecheck
-npm test                      # 計算ロジックの単体テスト
-node scripts/smoke.mjs        # wrangler dev を起動した状態で、API の通し確認（データが作られます）
+npm test        # 計算ロジックの単体テスト
+npm run smoke   # npm run dev を起動した状態で、API の通し確認（注文がない状態で実行。データが作られます）
 ```
 
 ## 本番に公開する（Cloudflare）

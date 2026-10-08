@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useConnection } from "../sync";
-import { useNow, useWakeLock } from "../components/ui";
+import { accentStyle, useNow, useWakeLock } from "../components/ui";
 
 const LONG_WAIT_MS = 5 * 60 * 1000;
 
@@ -36,8 +36,7 @@ export function Display({ shopId }: { shopId: string }) {
   useEffect(() => {
     if (!data) return;
     const cur = new Set(data.ready.map((r) => r.ticket));
-    const added = [...cur].some((t) => !prev.current.has(t));
-    if (added && sound && prev.current.size + cur.size > 0) chime();
+    if (sound && [...cur].some((t) => !prev.current.has(t))) chime();
     prev.current = cur;
   }, [data, sound]);
 
@@ -46,19 +45,17 @@ export function Display({ shopId }: { shopId: string }) {
   const waiting = data?.ready.filter((r) => now + offset - r.readyAt >= LONG_WAIT_MS) ?? [];
 
   return (
-    <div className="display">
-      <header className="display__header" style={{ background: data?.shop.color ?? "#334155" }}>
-        <span>{data?.shop.name ?? ""}</span>
-        <span className="display__title">できあがり <span lang="en">/ Ready</span></span>
+    <div className="display" style={accentStyle(data?.shop.color)}>
+      <header className="display__header">
+        <span className="display__shop">{data?.shop.name ?? ""}</span>
+        <h1 className="display__title">できあがり <span lang="en">Ready</span></h1>
       </header>
       <main className="display__main" aria-live="polite">
         {fresh.length === 0 && waiting.length === 0 ? (
-          <p className="display__empty">お呼び出し中の番号はありません</p>
+          <p className="display__empty">ただいまお呼び出し中の番号はありません</p>
         ) : (
           <ul className="display__list">
-            {fresh.map((r) => (
-              <li key={r.ticket} className="display__num">{r.ticket}</li>
-            ))}
+            {fresh.map((r) => <li key={r.ticket} className="display__num">{r.ticket}</li>)}
           </ul>
         )}
         {waiting.length > 0 && (
@@ -69,10 +66,10 @@ export function Display({ shopId }: { shopId: string }) {
         )}
       </main>
       <footer className="display__footer">
-        <span>番号札をお持ちの方は、受け取り口へお越しください。</span>
+        <span>番号札をお持ちの方は、受け取り口へお越しください</span>
         {state.status !== "online" && <span className="display__offline">接続中…</span>}
         <button className="display__sound" onClick={() => { setSound(!sound); if (!sound) chime(); }}>
-          {sound ? "音: オン" : "音: オフ（押すとオン）"}
+          {sound ? "音あり" : "音なし（押すと音あり）"}
         </button>
       </footer>
     </div>

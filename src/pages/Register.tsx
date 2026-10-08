@@ -1,23 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
-import { Btn, ConnBadge, Modal, Notices, ShopHeader, useWakeLock } from "../components/ui";
+import { AppBar, Banner, Btn, ConnBadge, Modal, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
 import { useConnection, viewMenu, viewOrders } from "../sync";
-import { load, save, uuid } from "../util";
+import { buzz, load, save, uuid } from "../util";
 
 type CartLine = { itemId: string; qty: number };
 const LOW_TICKETS = 3;
-
-function useIsWide() {
-  const q = "(min-width: 900px)";
-  const [wide, setWide] = useState(() => window.matchMedia(q).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(q);
-    const on = () => setWide(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return wide;
-}
+const QUICK = [1000, 5000, 10000];
 
 export function Register({ shopId, code, onAuthError }: { shopId: string; code: string; onAuthError: () => void }) {
   const { conn, state } = useConnection(shopId, "register", code);
@@ -27,20 +16,19 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   const draftKey = `draft:${shopId}`;
   const [cart, setCartRaw] = useState<CartLine[]>(() => load(draftKey, []));
-  const [history, setHistory] = useState<CartLine[][]>([]);
   const [step, setStep] = useState<"order" | "pay">("order");
   const [received, setReceived] = useState("");
+  const [keypad, setKeypad] = useState(false);
   const [ticketChoice, setTicketChoice] = useState<number | "none" | null>(null);
   const [pickTicket, setPickTicket] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [done, setDone] = useState<{ ticket: string; change: number; total: number } | null>(null);
+  const [done, setDone] = useState<{ ticket: string; change: number } | null>(null);
 
   useEffect(() => {
     if (status === "auth") onAuthError();
   }, [status, onAuthError]);
 
   const setCart = (next: CartLine[]) => {
-    setHistory((h) => [...h.slice(-30), cart]);
     setCartRaw(next);
     save(draftKey, next);
   };
@@ -53,6 +41,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const freeCount = Math.max(0, ticketCount - [...inUse].filter((t) => t <= ticketCount).length);
   const suggested = nextFreeTicket(ticketCount, inUse);
   const ticket = ticketChoice === "none" ? null : ticketChoice ?? suggested;
+  const label = (t: number | null) => ticketLabel(shop?.prefix ?? "", t);
 
   const lines = cart
     .map((c) => {
@@ -65,31 +54,25 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const shortBy = total - receivedNum;
   const change = receivedNum - total;
   const itemCount = lines.reduce((s, l) => s + l.qty, 0);
+  const qtyOf = (id: string) => cart.find((c) => c.itemId === id)?.qty ?? 0;
 
   const add = (itemId: string, delta: number) => {
+    buzz();
     const cur = cart.find((c) => c.itemId === itemId);
     if (!cur && delta > 0) setCart([...cart, { itemId, qty: delta }]);
     else if (cur) setCart(cart.map((c) => (c.itemId === itemId ? { ...c, qty: c.qty + delta } : c)).filter((c) => c.qty > 0));
   };
 
-  const undo = () => {
-    const prev = history[history.length - 1];
-    if (!prev) return;
-    setHistory(history.slice(0, -1));
-    setCartRaw(prev);
-    save(draftKey, prev);
-  };
-
   const reset = () => {
-    setCartRaw([]);
-    save(draftKey, []);
-    setHistory([]);
+    setCart([]);
     setReceived("");
+    setKeypad(false);
     setTicketChoice(null);
     setStep("order");
   };
 
-  const canConfirm = lines.length > 0 && receivedNum >= total && (ticket != null || ticketChoice === "none");
+  const ticketOk = ticket != null || ticketChoice === "none";
+  const canConfirm = lines.length > 0 && received !== "" && receivedNum >= total && ticketOk;
 
   const confirm = () => {
     if (!canConfirm) return;
@@ -97,68 +80,50 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       kind: "createOrder",
       order: { id: uuid(), ticket, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })), received: receivedNum, createdAt: Date.now() },
     });
-    setDone({ ticket: ticketLabel(shop?.prefix ?? "", ticket), change, total });
+    setDone({ ticket: label(ticket), change });
     reset();
   };
 
-  const header = (
-    <ShopHeader shop={shop} title="レジ" right={<ConnBadge status={status} pending={outbox.length} />} />
-  );
+  const appbar = <AppBar shop={shop} title="レジ" back="/" right={<ConnBadge status={status} pending={outbox.length} />} />;
 
   if (!snapshot) {
     return (
-      <div className="page">
-        {header}
-        <main className="center-message">
+      <Page shop={shop}>
+        {appbar}
+        <main className="empty-state">
           <p>お店の情報を読み込んでいます…</p>
           <p className="hint">初めて開くときは電波が必要です。</p>
         </main>
-      </div>
+      </Page>
     );
   }
 
   if (done) {
     return (
-      <div className="page">
-        {header}
+      <Page shop={shop}>
+        {appbar}
         <main className="done">
-          <p className="done__label">番号札を渡してください</p>
-          <p className="done__ticket" style={{ borderColor: shop?.color }}>{done.ticket}</p>
-          <dl className="done__money">
-            <div><dt>合計</dt><dd>{yen(done.total)}</dd></div>
-            <div><dt>お釣り</dt><dd className="done__change">{yen(done.change)}</dd></div>
-          </dl>
-          {status !== "online" && <p className="warn-box">オフラインです。注文は端末に保存され、電波が戻ると自動で厨房に送られます。急ぎの場合は口頭で厨房に伝えてください。</p>}
-          <Btn variant="primary" big onClick={() => setDone(null)}>次のお客さん</Btn>
+          <p className="done__lead">この札を渡してください</p>
+          <p className="done__ticket">{done.ticket}</p>
+          <p className="done__change">お釣り <b>{yen(done.change)}</b></p>
+          {status !== "online" && (
+            <Banner kind="warn">オフラインのため、まだ厨房に届いていません。口頭で伝えてください（電波が戻ると自動で送られます）。</Banner>
+          )}
+          <Btn variant="accent" big onClick={() => setDone(null)}>次のお客さん</Btn>
         </main>
-      </div>
+      </Page>
     );
   }
 
   const banners = (
-    <>
+    <div className="banners">
       <Notices notices={state.notices} onDismiss={(id) => conn.dismiss(id)} />
-      {snapshot.registerCount > 1 && (
-        <div className="warn-box" role="alert">レジが {snapshot.registerCount} 台で開かれています。札番号が重なるおそれがあるため、レジは1台だけにしてください。</div>
-      )}
+      {snapshot.registerCount > 1 && <Banner kind="warn">レジが{snapshot.registerCount}台で開かれています。1台だけにしてください。</Banner>}
       {freeCount === 0 ? (
-        <div className="error-box" role="alert">番号札がすべて使用中です。渡し終わった札を「渡した」にしてください。</div>
+        <Banner kind="error">番号札がすべて使用中です。渡し終わった札を厨房で「渡した」にしてください。</Banner>
       ) : freeCount <= LOW_TICKETS ? (
-        <div className="warn-box" role="status">空いている番号札が残り {freeCount} 枚です。</div>
+        <Banner kind="warn">空いている札が残り{freeCount}枚です。</Banner>
       ) : null}
-    </>
-  );
-
-  const totalBar = (
-    <div className="total-bar">
-      <div>
-        <span className="total-bar__label">合計</span>
-        <span className="total-bar__amount" aria-live="polite">{yen(total)}</span>
-      </div>
-      <div className="total-bar__ticket">
-        次の札 <b>{ticket != null ? ticketLabel(shop!.prefix, ticket) : "なし"}</b>
-        <span className="hint">空き {freeCount}/{ticketCount}</span>
-      </div>
     </div>
   );
 
@@ -166,153 +131,167 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     <section className="menu-grid" aria-label="メニュー">
       {menu.length === 0 && <p className="hint">メニューがありません。管理画面で登録してください。</p>}
       {menu.map((m) => {
-        const qty = cart.find((c) => c.itemId === m.id)?.qty ?? 0;
+        const qty = qtyOf(m.id);
         return (
-          <button
-            key={m.id}
-            className={`menu-btn ${m.soldOut ? "menu-btn--soldout" : ""} ${qty ? "menu-btn--in-cart" : ""}`}
-            disabled={m.soldOut}
-            onClick={() => {
-              navigator.vibrate?.(15);
-              add(m.id, 1);
-            }}
-            aria-label={`${m.name} ${yen(m.price)}${m.soldOut ? " 売り切れ" : ""}${qty ? ` 現在${qty}個` : ""}`}
-          >
-            <span className="menu-btn__name">{m.name}</span>
-            <span className="menu-btn__price">{m.soldOut ? "売り切れ" : yen(m.price)}</span>
-            {qty > 0 && <span className="menu-btn__qty" aria-hidden>×{qty}</span>}
-          </button>
+          <div key={m.id} className={`menu-card ${m.soldOut ? "is-soldout" : ""} ${qty ? "is-selected" : ""}`}>
+            <button
+              className="menu-card__main"
+              disabled={m.soldOut}
+              onClick={() => add(m.id, 1)}
+              aria-label={`${m.name} ${yen(m.price)}${m.soldOut ? " 売り切れ" : ""}${qty ? ` 現在${qty}個` : ""}`}
+            >
+              <span className="menu-card__name">{m.name}</span>
+              <span className="menu-card__price">{m.soldOut ? "売り切れ" : yen(m.price)}</span>
+            </button>
+            {qty > 0 && (
+              <>
+                <span className="menu-card__qty" aria-hidden>{qty}</span>
+                <button className="menu-card__minus" onClick={() => add(m.id, -1)} aria-label={`${m.name}を1つ減らす`}>−</button>
+              </>
+            )}
+          </div>
         );
       })}
     </section>
   );
 
-  const cartList = (
-    <section className="cart" aria-label="注文内容">
-      {lines.length === 0 ? (
-        <p className="hint cart__empty">メニューを押すと、ここに追加されます。</p>
-      ) : (
-        <ul className="cart__list">
-          {lines.map((l) => (
-            <li key={l.itemId} className="cart__line">
-              <span className="cart__name">{l.name}{l.soldOut && <span className="tag">売り切れ</span>}</span>
-              <span className="cart__sub">{yen(l.price * l.qty)}</span>
-              <span className="stepper">
-                <Btn ariaLabel={`${l.name}を1つ減らす`} onClick={() => add(l.itemId, -1)}>−</Btn>
-                <span className="stepper__qty" aria-label={`${l.qty}個`}>{l.qty}</span>
-                <Btn ariaLabel={`${l.name}を1つ増やす`} onClick={() => add(l.itemId, 1)} disabled={l.soldOut}>＋</Btn>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="cart__actions">
-        <Btn variant="ghost" onClick={undo} disabled={history.length === 0}>1つ戻す</Btn>
-        <Btn variant="ghost" onClick={() => setConfirmClear(true)} disabled={lines.length === 0}>全部消す</Btn>
-      </div>
-    </section>
-  );
-
   const pay = (
     <section className="pay" aria-label="お会計">
-      <div className="pay__rows">
-        <div className="pay__row"><span>合計</span><b>{yen(total)}</b></div>
-        <div className="pay__row"><span>預かり</span><b>{received ? yen(receivedNum) : "—"}</b></div>
-        <div className={`pay__row pay__change ${received && shortBy <= 0 ? "" : "pay__change--empty"}`} aria-live="polite">
-          <span>お釣り</span>
-          <b>{received && shortBy <= 0 ? yen(change) : "—"}</b>
+      <div className="pay__sum">
+        <div className="pay__line"><span>合計</span><b className="pay__total">{yen(total)}</b></div>
+        <div className="pay__line"><span>お預かり</span><b>{received ? yen(receivedNum) : "—"}</b></div>
+      </div>
+      <div className={`pay__change ${received && shortBy <= 0 ? "is-ready" : ""} ${received && shortBy > 0 ? "is-short" : ""}`} aria-live="polite">
+        <span>{received && shortBy > 0 ? "たりません" : "お釣り"}</span>
+        <b>{!received ? "—" : shortBy > 0 ? yen(shortBy) : yen(change)}</b>
+      </div>
+      <div className="quick" role="group" aria-label="お預かり金額">
+        <button className={`chip ${received !== "" && receivedNum === total ? "is-on" : ""}`} onClick={() => { buzz(); setReceived(String(total)); setKeypad(false); }} disabled={total === 0}>ちょうど</button>
+        {QUICK.map((v) => (
+          <button key={v} className={`chip ${!keypad && receivedNum === v && v !== total ? "is-on" : ""}`} onClick={() => { buzz(); setReceived(String(v)); setKeypad(false); }}>{v.toLocaleString()}円</button>
+        ))}
+        <button className={`chip ${keypad ? "is-on" : ""}`} onClick={() => { buzz(); setKeypad(!keypad); if (!keypad) setReceived(""); }}>ほかの金額</button>
+      </div>
+      {keypad && (
+        <div className="keypad" aria-label="金額の入力">
+          {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "00"].map((k) => (
+            <button key={k} className="key" onClick={() => { buzz(); setReceived((r) => (r + k).replace(/^0+(?=\d)/, "").slice(0, 7)); }}>{k}</button>
+          ))}
+          <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す">⌫</button>
         </div>
-        {received && shortBy > 0 && <p className="error" role="alert">預かり金が {yen(shortBy)} たりません</p>}
-      </div>
-      <div className="quick">
-        <Btn onClick={() => setReceived(String(total))} disabled={total === 0}>ちょうど</Btn>
-        {[1000, 5000, 10000].map((v) => (
-          <Btn key={v} onClick={() => setReceived(String(v))}>{v.toLocaleString()}円</Btn>
-        ))}
-      </div>
-      <div className="keypad" aria-label="預かり金の入力">
-        {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "00"].map((k) => (
-          <Btn key={k} onClick={() => setReceived((r) => (r + k).replace(/^0+(?=\d)/, "").slice(0, 7))}>{k}</Btn>
-        ))}
-        <Btn variant="ghost" onClick={() => setReceived("")}>クリア</Btn>
-      </div>
+      )}
       <div className="pay__ticket">
         <span>渡す札</span>
-        <b className="pay__ticket-label">{ticketChoice === "none" ? "札なし" : ticket != null ? ticketLabel(shop!.prefix, ticket) : "空きなし"}</b>
-        <Btn variant="ghost" onClick={() => setPickTicket(true)}>変更</Btn>
+        <b>{ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし"}</b>
+        <button className="link" onClick={() => setPickTicket(true)}>変更</button>
       </div>
-      <Btn variant="primary" big onClick={confirm} disabled={!canConfirm}>
-        {lines.length === 0 ? "商品を選んでください" : !received ? "預かり金を入力してください" : shortBy > 0 ? `あと ${yen(shortBy)}` : ticket == null && ticketChoice !== "none" ? "札を選んでください" : "会計を確定"}
+      <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
+        {lines.length === 0 ? "商品を選んでください" : received === "" ? "お預かり金額を選んでください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : !ticketOk ? "札を選んでください" : "会計を確定"}
       </Btn>
     </section>
   );
 
-  return (
-    <div className="page">
-      {header}
-      {banners}
-      {(wide || step === "order") && totalBar}
-      {wide ? (
-        <main className="register register--wide">
-          <div className="register__menu">{menuGrid}</div>
-          <div className="register__side">
-            {cartList}
+  const ticketModal = pickTicket && (
+    <Modal title="渡す札を選ぶ" onClose={() => setPickTicket(false)}>
+      <p className="hint">灰色の番号は使用中です。</p>
+      <div className="ticket-grid">
+        {Array.from({ length: ticketCount }, (_, i) => i + 1).map((n) => {
+          const used = inUse.has(n);
+          return (
+            <button
+              key={n}
+              className={`ticket ${used ? "is-used" : ""} ${ticket === n ? "is-selected" : ""}`}
+              disabled={used}
+              onClick={() => { setTicketChoice(n); setPickTicket(false); }}
+              aria-label={`${label(n)}${used ? " 使用中" : ""}`}
+            >
+              {n}
+            </button>
+          );
+        })}
+      </div>
+      <div className="modal__actions">
+        <Btn variant="ghost" onClick={() => { setTicketChoice("none"); setPickTicket(false); }}>札なしで会計</Btn>
+        <Btn onClick={() => { setTicketChoice(null); setPickTicket(false); }}>おすすめ（{label(suggested)}）に戻す</Btn>
+      </div>
+    </Modal>
+  );
+
+  const clearModal = confirmClear && (
+    <Modal title="注文を全部消しますか？" onClose={() => setConfirmClear(false)}>
+      <p>入力中の {itemCount}点（{yen(total)}）を消します。</p>
+      <div className="modal__actions">
+        <Btn onClick={() => setConfirmClear(false)}>やめる</Btn>
+        <Btn variant="danger" onClick={() => { reset(); setConfirmClear(false); }}>全部消す</Btn>
+      </div>
+    </Modal>
+  );
+
+  if (wide) {
+    return (
+      <Page shop={shop}>
+        {appbar}
+        {banners}
+        <main className="register-wide">
+          <div className="register-wide__menu">{menuGrid}</div>
+          <aside className="register-wide__side">
+            <section className="order-list" aria-label="注文内容">
+              <div className="order-list__head">
+                <h2>注文 <span className="muted">{itemCount}点</span></h2>
+                {lines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
+              </div>
+              {lines.length === 0 ? (
+                <p className="hint">左のメニューを押すと追加されます。</p>
+              ) : (
+                <ul>
+                  {lines.map((l) => (
+                    <li key={l.itemId}>
+                      <span className="order-list__name">{l.name}</span>
+                      <span className="stepper">
+                        <button onClick={() => add(l.itemId, -1)} aria-label={`${l.name}を1つ減らす`}>−</button>
+                        <b>{l.qty}</b>
+                        <button onClick={() => add(l.itemId, 1)} disabled={l.soldOut} aria-label={`${l.name}を1つ増やす`}>＋</button>
+                      </span>
+                      <span className="order-list__sub">{yen(l.price * l.qty)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
             {pay}
+          </aside>
+        </main>
+        {ticketModal}
+        {clearModal}
+      </Page>
+    );
+  }
+
+  return (
+    <Page shop={shop}>
+      {appbar}
+      {banners}
+      {step === "order" ? (
+        <>
+          <main className="register">{menuGrid}</main>
+          <div className="bottom-bar">
+            <div className="bottom-bar__sum">
+              <span className="bottom-bar__count">{itemCount ? `${itemCount}点` : "未選択"}</span>
+              <b className="bottom-bar__total" aria-live="polite">{yen(total)}</b>
+              {lines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
+            </div>
+            <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ</Btn>
           </div>
-        </main>
-      ) : step === "order" ? (
-        <main className="register">
-          {menuGrid}
-          {cartList}
-          <Btn variant="primary" big className="sticky-action" disabled={lines.length === 0} onClick={() => setStep("pay")}>
-            {lines.length === 0 ? "商品を選んでください" : `お会計へ（${itemCount}点）`}
-          </Btn>
-        </main>
+        </>
       ) : (
-        <main className="register">
-          <Btn variant="ghost" onClick={() => setStep("order")}>← 注文に戻る</Btn>
+        <main className="register register--pay">
+          <button className="back-link" onClick={() => setStep("order")}>‹ 注文に戻る</button>
+          <p className="pay__items">{lines.map((l) => `${l.name}×${l.qty}`).join("、")}</p>
           {pay}
         </main>
       )}
-
-      {pickTicket && (
-        <Modal title="渡す札を選ぶ" onClose={() => setPickTicket(false)}>
-          <p className="hint">色の付いた番号は使用中です。</p>
-          <div className="ticket-grid">
-            {Array.from({ length: ticketCount }, (_, i) => i + 1).map((n) => {
-              const used = inUse.has(n);
-              return (
-                <button
-                  key={n}
-                  className={`ticket-cell ${used ? "ticket-cell--used" : ""} ${ticket === n ? "ticket-cell--selected" : ""}`}
-                  disabled={used}
-                  onClick={() => {
-                    setTicketChoice(n);
-                    setPickTicket(false);
-                  }}
-                  aria-label={`${ticketLabel(shop!.prefix, n)}${used ? " 使用中" : ""}`}
-                >
-                  {n}
-                  {used && <small>使用中</small>}
-                </button>
-              );
-            })}
-          </div>
-          <div className="modal__actions">
-            <Btn onClick={() => { setTicketChoice(null); setPickTicket(false); }}>おすすめに戻す</Btn>
-            <Btn onClick={() => { setTicketChoice("none"); setPickTicket(false); }}>札なしで会計</Btn>
-          </div>
-        </Modal>
-      )}
-      {confirmClear && (
-        <Modal title="注文を全部消しますか？" onClose={() => setConfirmClear(false)}>
-          <p>入力中の注文（{itemCount}点・{yen(total)}）を消します。</p>
-          <div className="modal__actions">
-            <Btn onClick={() => setConfirmClear(false)}>やめる</Btn>
-            <Btn variant="danger" onClick={() => { reset(); setConfirmClear(false); }}>全部消す</Btn>
-          </div>
-        </Modal>
-      )}
-    </div>
+      {ticketModal}
+      {clearModal}
+    </Page>
   );
 }

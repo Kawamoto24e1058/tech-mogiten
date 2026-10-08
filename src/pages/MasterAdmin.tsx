@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DaySummary, ShopPublic } from "../../shared/types";
 import { yen } from "../../shared/logic";
-import { Btn, ShopHeader } from "../components/ui";
-import { ItemTable, Kpis, SlotBars } from "../components/Summary";
+import { AppBar, Banner, Page, accentStyle } from "../components/ui";
+import { ItemRanking } from "../components/Summary";
 import { api, ApiError, todayJst } from "../util";
+
+const CLUB = { name: "テック部", color: "#111827", prefix: "T" };
 
 export function MasterAdmin({ code, onAuthError }: { code: string; onAuthError: () => void }) {
   const [day, setDay] = useState(todayJst());
@@ -28,45 +30,48 @@ export function MasterAdmin({ code, onAuthError }: { code: string; onAuthError: 
 
   const total = data?.reduce((s, d) => s + d.summary.sales, 0) ?? 0;
   const count = data?.reduce((s, d) => s + d.summary.orderCount, 0) ?? 0;
-  const cash = data?.reduce((s, d) => s + d.summary.expectedCash, 0) ?? 0;
 
   return (
-    <div className="page">
-      <ShopHeader shop={{ name: "テック部", color: "#0f172a", prefix: "" }} title="全体の売上" right={<Btn variant="ghost" className="btn--on-color" onClick={() => void load()}>更新</Btn>} />
-      <div className="admin-bar">
-        <label>日付 <input className="input" type="date" value={day} onChange={(e) => setDay(e.target.value || todayJst())} /></label>
-      </div>
-      {error && <div className="error-box" role="alert">{error}</div>}
+    <Page shop={CLUB}>
+      <AppBar shop={CLUB} title="全体の売上" back="/" right={<button className="appbar__btn" onClick={() => void load()}>更新</button>} />
       <main className="admin">
-        {!data ? <p>読み込んでいます…</p> : (
+        <label className="day-select">
+          <span>日付</span>
+          <input className="input" type="date" value={day} onChange={(e) => setDay(e.target.value || todayJst())} />
+        </label>
+        {error && <Banner kind="error">{error}</Banner>}
+        {!data ? <p className="hint">読み込んでいます…</p> : (
           <>
             <div className="kpis">
-              <div className="kpi kpi--main"><span>2店舗の売上合計</span><b>{yen(total)}</b></div>
-              <div className="kpi"><span>注文件数</span><b>{count}件</b></div>
-              <div className="kpi"><span>あるはずの現金（合計）</span><b>{yen(cash)}</b></div>
+              <div className="kpi kpi--main"><span>2店舗の合計</span><b>{yen(total)}</b></div>
+              <div className="kpi"><span>注文</span><b>{count}<small>件</small></b></div>
             </div>
-            <div className="shop-columns">
-              {data.map(({ shop, summary }) => (
-                <section key={shop.id} className="shop-col" style={{ borderTopColor: shop.color }}>
-                  <h2><span className="shop-dot" style={{ background: shop.color }} aria-hidden />{shop.name}</h2>
-                  {!shop.configured && <p className="warn-box">合言葉が未設定です。店舗の管理画面の「設定」から設定してください。</p>}
-                  <Kpis s={summary} />
-                  <ItemTable s={summary} />
-                  <SlotBars s={summary} />
-                  {summary.closing ? (
-                    summary.closing.expected !== summary.expectedCash ? (
-                      <p className="warn-box">レジ締めの後に売上が変わっています。締め直してください。</p>
-                    ) : (
-                      <p className={summary.closing.diff === 0 ? "ok-box" : "warn-box"}>レジ締め済み・差額 {yen(summary.closing.diff)}</p>
-                    )
-                  ) : <p className="hint">レジ締めはまだです。</p>}
-                  <a className="btn btn--default" href={`/${shop.id}/admin`}>{shop.name}の管理画面へ</a>
-                </section>
-              ))}
+            <div className="shop-cards">
+              {data.map(({ shop, summary }) => {
+                const c = summary.closing;
+                return (
+                  <section key={shop.id} className="shop-card" style={accentStyle(shop.color)}>
+                    <header className="shop-card__head">
+                      <span className="shop-badge" aria-hidden>{shop.prefix}</span>
+                      <h2>{shop.name}</h2>
+                      <a className="link" href={`/${shop.id}/admin`}>詳しく ›</a>
+                    </header>
+                    <div className="shop-card__nums">
+                      <div><span>売上</span><b>{yen(summary.sales)}</b></div>
+                      <div><span>注文</span><b>{summary.orderCount}件</b></div>
+                    </div>
+                    {!shop.configured && <Banner kind="warn">合言葉が未設定です</Banner>}
+                    <ItemRanking s={summary} limit={3} />
+                    <p className={`closing-state ${c ? (c.expected !== summary.expectedCash ? "is-warn" : c.diff === 0 ? "is-ok" : "is-warn") : ""}`}>
+                      {!c ? "レジ締め：まだ" : c.expected !== summary.expectedCash ? "レジ締め：締めた後に売上が変わっています" : c.diff === 0 ? "✓ レジ締め済み（差額なし）" : `レジ締め済み（差額 ${yen(c.diff)}）`}
+                    </p>
+                  </section>
+                );
+              })}
             </div>
           </>
         )}
       </main>
-    </div>
+    </Page>
   );
 }

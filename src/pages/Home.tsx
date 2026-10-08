@@ -1,12 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ShopPublic } from "../../shared/types";
+import { accentStyle } from "../components/ui";
 import { api, load, save } from "../util";
 
-const SCREENS: [string, string, string][] = [
-  ["register", "レジ", "注文を入力して会計する"],
-  ["kitchen", "厨房・受け渡し", "作る・できた・渡した"],
-  ["display", "呼び出し表示", "店先のモニター用"],
-  ["admin", "管理", "メニュー・売上・レジ締め"],
+const Icon = ({ children }: { children: ReactNode }) => (
+  <svg className="tile__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    {children}
+  </svg>
+);
+
+const SCREENS: { path: string; label: string; desc: string; icon: ReactNode }[] = [
+  { path: "register", label: "レジ", desc: "注文と会計", icon: <Icon><rect x="3" y="10" width="18" height="10" rx="2" /><path d="M7 10V5h10v5M7 14h2M11 14h2M15 14h2" /></Icon> },
+  { path: "kitchen", label: "厨房", desc: "作る・渡す", icon: <Icon><path d="M4 11h16v3a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6z" /><path d="M2 11h20M9 4c0 2 1 2 1 4M13 4c0 2 1 2 1 4" /></Icon> },
+  { path: "display", label: "呼び出し", desc: "店先のモニター", icon: <Icon><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></Icon> },
+  { path: "admin", label: "管理", desc: "売上・メニュー", icon: <Icon><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></Icon> },
 ];
 
 export function Home() {
@@ -18,28 +25,28 @@ export function Home() {
       .catch((e: Error) => setError(e.message));
   }, []);
   return (
-    <div className="page">
-      <header className="shop-header" style={{ background: "#0f172a" }}>
-        <div className="shop-header__name">模擬店 会計システム</div>
-      </header>
+    <div className="page home-page">
       <main className="home">
-        {error && shops.length === 0 && <p className="error-box">{error}</p>}
+        <h1 className="home__title">模擬店レジ</h1>
+        <p className="home__lead">使うお店と画面を選んでください</p>
+        {error && shops.length === 0 && <p className="error">{error}</p>}
         {shops.map((s) => (
-          <section key={s.id} className="home__shop" style={{ borderColor: s.color }}>
-            <h2 style={{ background: s.color }}><span className="shop-header__prefix">{s.prefix}</span>{s.name}</h2>
-            <ul className="home__links">
-              {SCREENS.map(([path, label, desc]) => (
-                <li key={path}>
-                  <a className="home__link" href={`/${s.id}/${path}`}>
-                    <b>{label}</b>
-                    <span>{desc}</span>
+          <section key={s.id} className="home-shop" style={accentStyle(s.color)}>
+            <h2 className="home-shop__name"><span className="shop-badge" aria-hidden>{s.prefix}</span>{s.name}</h2>
+            <ul className="tiles">
+              {SCREENS.map((sc) => (
+                <li key={sc.path}>
+                  <a className="tile" href={`/${s.id}/${sc.path}`}>
+                    {sc.icon}
+                    <b>{sc.label}</b>
+                    <span>{sc.desc}</span>
                   </a>
                 </li>
               ))}
             </ul>
           </section>
         ))}
-        <a className="home__master" href="/admin">テック部：全体の売上を見る</a>
+        <a className="home__master" href="/admin">テック部：全体の売上 ›</a>
       </main>
     </div>
   );

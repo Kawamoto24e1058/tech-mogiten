@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { DaySummary, MenuItem, Order, ShopPublic } from "../../shared/types";
 import { DENOMINATIONS } from "../../shared/types";
 import { ticketLabel, yen } from "../../shared/logic";
-import { Btn, Modal, ShopHeader } from "../components/ui";
-import { ItemTable, Kpis, SlotBars } from "../components/Summary";
+import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
+import { ItemRanking, Kpis, SlotBars, SubStats } from "../components/Summary";
 import { api, ApiError, timeOf, todayJst } from "../util";
 
 interface AdminState {
@@ -16,16 +16,16 @@ interface AdminState {
   audit: { at: number; action: string; orderId: string | null; detail: Record<string, unknown> }[];
 }
 
-type Tab = "sales" | "orders" | "tickets" | "menu" | "closing" | "settings" | "history";
-const TABS: [Tab, string][] = [
-  ["sales", "売上"], ["orders", "注文"], ["tickets", "番号札"], ["menu", "メニュー"], ["closing", "レジ締め"], ["settings", "設定"], ["history", "履歴"],
-];
+type Tab = "sales" | "orders" | "menu" | "closing" | "settings";
+const TABS: [Tab, string][] = [["sales", "売上"], ["orders", "注文"], ["menu", "メニュー"], ["closing", "締め"], ["settings", "設定"]];
 const STATUS_JA: Record<string, string> = { cooking: "調理中", ready: "できた", handed: "渡した", cancelled: "キャンセル" };
 const ACTION_JA: Record<string, string> = {
   cancel: "キャンセル", "ticket.change": "札の変更", "ticket.release": "札を空きに戻す", "menu.add": "メニュー追加",
   "menu.edit": "メニュー変更", "menu.delete": "メニュー削除", settings: "店舗設定の変更", codes: "合言葉・PINの変更",
   float: "釣り銭準備金", closing: "レジ締め",
 };
+
+type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;
 
 export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code: string; onAuthError: () => void }) {
   const [tab, setTab] = useState<Tab>("sales");
@@ -62,7 +62,13 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
     return () => clearInterval(t);
   }, [refresh]);
 
-  const mutate = async (path: string, method: string, body?: unknown, msg?: string) => {
+  useEffect(() => {
+    if (!info) return;
+    const t = setTimeout(() => setInfo(""), 4000);
+    return () => clearTimeout(t);
+  }, [info]);
+
+  const mutate: Mutate = async (path, method, body, msg) => {
     const r = await call<AdminState>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
     if (r) {
       setSt(r);
@@ -77,9 +83,8 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
     try {
       const res = await fetch(`${base}/csv?day=${day}`, { headers: { authorization: `Bearer ${code}` } });
       if (!res.ok) throw new Error();
-      const blob = await res.blob();
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
+      a.href = URL.createObjectURL(await res.blob());
       a.download = `売上-${st?.shop.name ?? shopId}-${day}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
@@ -92,54 +97,43 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
   const days = Array.from(new Set([todayJst(), ...(st?.days ?? [])])).sort().reverse();
 
   return (
-    <div className="page">
-      <ShopHeader shop={shop} title="管理" right={<Btn variant="ghost" className="btn--on-color" onClick={() => void refresh()}>更新</Btn>} />
-      <div className="admin-bar">
-        <label>
-          日付{" "}
-          <select className="input" value={day} onChange={(e) => setDay(e.target.value)}>
-            {days.map((d) => <option key={d} value={d}>{d}{d === todayJst() ? "（今日）" : ""}</option>)}
-          </select>
-        </label>
-        <nav className="tabs tabs--admin" aria-label="管理メニュー">
-          {TABS.map(([k, label]) => (
-            <button key={k} className={`tab ${tab === k ? "tab--active" : ""}`} aria-pressed={tab === k} onClick={() => { setTab(k); setInfo(""); }}>{label}</button>
-          ))}
-        </nav>
-      </div>
-      {error && <div className="error-box" role="alert">{error}</div>}
-      {info && <div className="ok-box" role="status">{info}</div>}
+    <Page shop={shop}>
+      <AppBar shop={shop} title="管理" back="/" right={<button className="appbar__btn" onClick={() => void refresh()}>更新</button>} />
+      <nav className="tabbar" aria-label="管理メニュー">
+        {TABS.map(([k, label]) => (
+          <button key={k} className={tab === k ? "is-on" : ""} aria-pressed={tab === k} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </nav>
       <main className="admin">
-        {!st || !sum ? <p>読み込んでいます…</p> : (
+        {(tab === "sales" || tab === "orders" || tab === "closing") && days.length > 1 && (
+          <label className="day-select">
+            <span>日付</span>
+            <select className="input" value={day} onChange={(e) => setDay(e.target.value)}>
+              {days.map((d) => <option key={d} value={d}>{d}{d === todayJst() ? "（今日）" : ""}</option>)}
+            </select>
+          </label>
+        )}
+        {error && <Banner kind="error">{error}</Banner>}
+        {info && <div className="toast" role="status">✓ {info}</div>}
+        {!st || !sum ? <p className="hint">読み込んでいます…</p> : (
           <>
             {tab === "sales" && (
               <>
                 <Kpis s={sum} />
-                <ItemTable s={sum} />
+                <SubStats s={sum} />
+                <ItemRanking s={sum} />
                 <SlotBars s={sum} />
-                <Btn onClick={() => void downloadCsv()}>CSVで書き出す（{day}）</Btn>
+                <Btn onClick={() => void downloadCsv()}>CSVで書き出す</Btn>
               </>
             )}
             {tab === "orders" && <OrdersTab st={st} mutate={mutate} />}
-            {tab === "tickets" && <TicketsTab st={st} mutate={mutate} />}
             {tab === "menu" && <MenuTab st={st} mutate={mutate} />}
-            {tab === "closing" && <ClosingTab key={sum.day} sum={sum} call={call} setSum={setSum} setInfo={setInfo} />}
+            {tab === "closing" && <ClosingTab key={sum.day} sum={sum} call={call} setSum={setSum} setInfo={setInfo} onCsv={() => void downloadCsv()} />}
             {tab === "settings" && <SettingsTab st={st} mutate={mutate} />}
-            {tab === "history" && (
-              <ul className="history">
-                {st.audit.length === 0 && <p className="hint">この日の変更履歴はありません。</p>}
-                {st.audit.map((a, i) => (
-                  <li key={i}>
-                    <time>{timeOf(a.at)}</time> <b>{ACTION_JA[a.action] ?? a.action}</b>{" "}
-                    <span className="hint">{describe(a.detail)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </>
         )}
       </main>
-    </div>
+    </Page>
   );
 }
 
@@ -158,97 +152,112 @@ function describe(d: Record<string, unknown>): string {
   return parts.join(" / ");
 }
 
-type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;
-
 function OrdersTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
-  const [cancelling, setCancelling] = useState<Order | null>(null);
+  const [selected, setSelected] = useState<Order | null>(null);
+  const [mode, setMode] = useState<"menu" | "cancel" | "ticket">("menu");
   const [reason, setReason] = useState("");
-  const [retick, setRetick] = useState<Order | null>(null);
   const [newTicket, setNewTicket] = useState("");
-  const orders = [...st.orders].reverse();
-  return (
-    <>
-      <p className="hint">会計確定後の訂正はここで行います。内容を変える場合は、キャンセルしてからレジで入力し直してください。</p>
-      {orders.length === 0 && <p className="hint">この日の注文はありません。</p>}
-      <div className="table-wrap">
-        <table className="table">
-          <thead><tr><th>注文</th><th>時刻</th><th>札</th><th>内容</th><th className="num">合計</th><th>状態</th><th>操作</th></tr></thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.id} className={o.status === "cancelled" ? "row--cancelled" : ""}>
-                <td>{o.seq}</td>
-                <td>{timeOf(o.createdAt)}</td>
-                <td>{ticketLabel(st.shop.prefix, o.ticket)}</td>
-                <td>{o.lines.map((l) => `${l.name}×${l.qty}`).join("、")}</td>
-                <td className="num">{yen(o.total)}</td>
-                <td>{STATUS_JA[o.status]}{o.cancelReason && <small className="hint">（{o.cancelReason}）</small>}</td>
-                <td className="actions">
-                  {o.status !== "cancelled" && (
-                    <>
-                      <Btn variant="ghost" onClick={() => { setRetick(o); setNewTicket(o.ticket ? String(o.ticket) : ""); }}>札を変更</Btn>
-                      <Btn variant="danger" onClick={() => { setCancelling(o); setReason(""); }}>キャンセル</Btn>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {cancelling && (
-        <Modal title={`注文 ${cancelling.seq} をキャンセルしますか？`} onClose={() => setCancelling(null)}>
-          <p>{cancelling.lines.map((l) => `${l.name}×${l.qty}`).join("、")}（{yen(cancelling.total)}）</p>
-          <p className="warn-box">お客さんに <b>{yen(cancelling.total)}</b> を返金してください。売上から差し引かれます。</p>
-          <label className="field">理由（必須）
-            <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例: 入力ミス、お客さんの都合" />
-          </label>
-          <div className="modal__actions">
-            <Btn onClick={() => setCancelling(null)}>やめる</Btn>
-            <Btn variant="danger" disabled={!reason.trim()} onClick={async () => {
-              if (await mutate(`/orders/${encodeURIComponent(cancelling.id)}/cancel`, "POST", { reason }, `注文 ${cancelling.seq} をキャンセルしました`)) setCancelling(null);
-            }}>キャンセルする</Btn>
-          </div>
-        </Modal>
-      )}
-      {retick && (
-        <Modal title={`注文 ${retick.seq} の札を変更`} onClose={() => setRetick(null)}>
-          <label className="field">札番号（空欄で「札なし」）
-            <input className="input" inputMode="numeric" value={newTicket} onChange={(e) => setNewTicket(e.target.value.replace(/\D/g, ""))} />
-          </label>
-          <div className="modal__actions">
-            <Btn onClick={() => setRetick(null)}>やめる</Btn>
-            <Btn variant="primary" onClick={async () => {
-              if (await mutate(`/orders/${encodeURIComponent(retick.id)}/ticket`, "POST", { ticket: newTicket ? Number(newTicket) : null }, "札を変更しました")) setRetick(null);
-            }}>変更する</Btn>
-          </div>
-        </Modal>
-      )}
-    </>
-  );
-}
-
-function TicketsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const [releasing, setReleasing] = useState<number | null>(null);
-  const used = new Map(st.tickets.map((t) => [t.ticket, t]));
+  const label = (t: number | null) => ticketLabel(st.shop.prefix, t);
+  const orders = [...st.orders].reverse();
+  const open = (o: Order) => { setSelected(o); setMode("menu"); setReason(""); setNewTicket(o.ticket ? String(o.ticket) : ""); };
+
   return (
     <>
-      <p className="hint">使用中: {used.size}枚 / 空き: {st.shop.ticketCount - [...used.keys()].filter((t) => t <= st.shop.ticketCount).length}枚。返ってこない札は「空きに戻す」で再利用できます。</p>
-      <div className="ticket-grid ticket-grid--admin">
-        {Array.from({ length: st.shop.ticketCount }, (_, i) => i + 1).map((n) => {
-          const t = used.get(n);
-          return (
-            <button key={n} className={`ticket-cell ${t ? "ticket-cell--used" : ""}`} onClick={() => t && setReleasing(n)} aria-label={`${ticketLabel(st.shop.prefix, n)} ${t ? `使用中 注文${t.seq}` : "空き"}`}>
-              {n}
-              <small>{t ? `注文${t.seq}・${STATUS_JA[t.status]}` : "空き"}</small>
-            </button>
-          );
-        })}
-      </div>
+      <section className="panel">
+        <h3 className="panel__title">使用中の札 <span className="muted">{st.tickets.length} / {st.shop.ticketCount}枚</span></h3>
+        {st.tickets.length === 0 ? <p className="hint">使用中の札はありません。</p> : (
+          <>
+            <ul className="chips">
+              {[...st.tickets].sort((a, b) => a.ticket - b.ticket).map((t) => (
+                <li key={t.ticket}>
+                  <button className={`ticket-chip ticket-chip--${t.status}`} onClick={() => setReleasing(t.ticket)} aria-label={`${label(t.ticket)} ${STATUS_JA[t.status]} 押すと空きに戻せます`}>
+                    {label(t.ticket)}<small>{STATUS_JA[t.status]}</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="hint">返ってこない札は、押すと空きに戻せます。</p>
+          </>
+        )}
+      </section>
+
+      <section className="panel">
+        <h3 className="panel__title">注文 <span className="muted">{st.orders.length}件</span></h3>
+        {orders.length === 0 ? <p className="hint">この日の注文はありません。</p> : (
+          <ul className="order-rows">
+            {orders.map((o) => (
+              <li key={o.id}>
+                <button className={`order-row ${o.status === "cancelled" ? "is-cancelled" : ""}`} onClick={() => open(o)} disabled={o.status === "cancelled"}>
+                  <span className="order-row__no">#{o.seq}</span>
+                  <span className="order-row__main">
+                    <span className="order-row__items">{o.lines.map((l) => `${l.name}×${l.qty}`).join("、")}</span>
+                    <span className="order-row__meta">{timeOf(o.createdAt)} ・ {label(o.ticket)} ・ {STATUS_JA[o.status]}{o.cancelReason ? `（${o.cancelReason}）` : ""}</span>
+                  </span>
+                  <b className="order-row__total">{yen(o.total)}</b>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <details className="panel history">
+        <summary className="panel__title">変更履歴 <span className="muted">{st.audit.length}件</span></summary>
+        {st.audit.length === 0 ? <p className="hint">この日の変更はありません。</p> : (
+          <ul>
+            {st.audit.map((a, i) => (
+              <li key={i}><time>{timeOf(a.at)}</time> <b>{ACTION_JA[a.action] ?? a.action}</b> <span className="muted">{describe(a.detail)}</span></li>
+            ))}
+          </ul>
+        )}
+      </details>
+
+      {selected && (
+        <Modal title={`注文 #${selected.seq}`} onClose={() => setSelected(null)}>
+          <p className="modal__summary">{selected.lines.map((l) => `${l.name}×${l.qty}`).join("、")}<br /><b>{yen(selected.total)}</b> ・ {label(selected.ticket)}</p>
+          {mode === "menu" && (
+            <div className="modal__actions modal__actions--stack">
+              <Btn onClick={() => setMode("ticket")}>札の番号を変える</Btn>
+              <Btn variant="danger" onClick={() => setMode("cancel")}>キャンセルして返金する</Btn>
+              <p className="hint">内容を変えたいときは、キャンセルしてからレジで入力し直してください。</p>
+            </div>
+          )}
+          {mode === "cancel" && (
+            <>
+              <Banner kind="warn">お客さんに <b>{yen(selected.total)}</b> を返してください。売上から差し引かれます。</Banner>
+              <label className="field">理由
+                <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例: 入力ミス" autoFocus />
+              </label>
+              <div className="modal__actions">
+                <Btn variant="ghost" onClick={() => setMode("menu")}>戻る</Btn>
+                <Btn variant="danger" disabled={!reason.trim()} onClick={async () => {
+                  if (await mutate(`/orders/${encodeURIComponent(selected.id)}/cancel`, "POST", { reason }, `注文 #${selected.seq} をキャンセルしました`)) setSelected(null);
+                }}>キャンセルする</Btn>
+              </div>
+            </>
+          )}
+          {mode === "ticket" && (
+            <>
+              <label className="field">新しい札の番号（空欄で「札なし」）
+                <input className="input" inputMode="numeric" value={newTicket} onChange={(e) => setNewTicket(e.target.value.replace(/\D/g, ""))} autoFocus />
+              </label>
+              <div className="modal__actions">
+                <Btn variant="ghost" onClick={() => setMode("menu")}>戻る</Btn>
+                <Btn variant="accent" onClick={async () => {
+                  if (await mutate(`/orders/${encodeURIComponent(selected.id)}/ticket`, "POST", { ticket: newTicket ? Number(newTicket) : null }, "札を変更しました")) setSelected(null);
+                }}>変更する</Btn>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
+
       {releasing != null && (
-        <Modal title={`札 ${ticketLabel(st.shop.prefix, releasing)} を空きに戻しますか？`} onClose={() => setReleasing(null)}>
-          <p>札をなくした・返ってこなかったときに使います。注文そのものは消えません。</p>
+        <Modal title={`札 ${label(releasing)} を空きに戻しますか？`} onClose={() => setReleasing(null)}>
+          <p>札をなくした・返ってこなかったときに使います。注文は消えません。</p>
           <div className="modal__actions">
-            <Btn onClick={() => setReleasing(null)}>やめる</Btn>
+            <Btn variant="ghost" onClick={() => setReleasing(null)}>やめる</Btn>
             <Btn variant="danger" onClick={async () => {
               if (await mutate(`/tickets/${releasing}/release`, "POST", {}, "札を空きに戻しました")) setReleasing(null);
             }}>空きに戻す</Btn>
@@ -260,123 +269,143 @@ function TicketsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
 }
 
 function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+  const [editing, setEditing] = useState<MenuItem | "new" | null>(null);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
-  const [deleting, setDeleting] = useState<MenuItem | null>(null);
-  const [edits, setEdits] = useState<Record<string, { name: string; price: string }>>({});
-  const move = (i: number, d: number) => {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const open = (m: MenuItem | "new") => {
+    setEditing(m);
+    setName(m === "new" ? "" : m.name);
+    setPrice(m === "new" ? "" : String(m.price));
+    setConfirmDelete(false);
+  };
+  const move = async (i: number, d: number) => {
     const a = st.menu[i];
     const b = st.menu[i + d];
     if (!a || !b) return;
-    void mutate(`/menu/${a.id}`, "PUT", { sort: b.sort }).then(() => mutate(`/menu/${b.id}`, "PUT", { sort: a.sort }));
+    await mutate(`/menu/${a.id}`, "PUT", { sort: b.sort });
+    await mutate(`/menu/${b.id}`, "PUT", { sort: a.sort });
   };
+  const idx = editing && editing !== "new" ? st.menu.findIndex((m) => m.id === editing.id) : -1;
+
   return (
     <>
-      <p className="hint">価格を変えても、すでに会計した注文の金額は変わりません。</p>
-      <ul className="menu-admin">
-        {st.menu.map((m, i) => {
-          const e = edits[m.id] ?? { name: m.name, price: String(m.price) };
-          const changed = e.name !== m.name || e.price !== String(m.price);
-          return (
-            <li key={m.id} className="menu-admin__row">
-              <input className="input" aria-label="商品名" value={e.name} onChange={(ev) => setEdits({ ...edits, [m.id]: { ...e, name: ev.target.value } })} />
-              <label className="price-input"><input className="input" aria-label="価格" inputMode="numeric" value={e.price} onChange={(ev) => setEdits({ ...edits, [m.id]: { ...e, price: ev.target.value.replace(/\D/g, "") } })} />円</label>
-              {changed && (
-                <Btn variant="primary" onClick={async () => {
-                  if (await mutate(`/menu/${m.id}`, "PUT", { name: e.name, price: Number(e.price) }, `「${e.name}」を保存しました`)) {
-                    const next = { ...edits };
-                    delete next[m.id];
-                    setEdits(next);
-                  }
-                }}>保存</Btn>
-              )}
-              <Btn variant={m.soldOut ? "danger" : "default"} onClick={() => void mutate(`/menu/${m.id}`, "PUT", { soldOut: !m.soldOut })}>{m.soldOut ? "売り切れ中" : "販売中"}</Btn>
-              <Btn variant="ghost" ariaLabel={`${m.name}を上へ`} onClick={() => move(i, -1)} disabled={i === 0}>↑ 上へ</Btn>
-              <Btn variant="ghost" ariaLabel={`${m.name}を下へ`} onClick={() => move(i, 1)} disabled={i === st.menu.length - 1}>↓ 下へ</Btn>
-              <Btn variant="ghost" onClick={() => setDeleting(m)}>削除</Btn>
+      <section className="panel">
+        <h3 className="panel__title">メニュー <span className="muted">{st.menu.length}品</span></h3>
+        <ul className="menu-rows">
+          {st.menu.map((m) => (
+            <li key={m.id}>
+              <button className="menu-row" onClick={() => open(m)}>
+                <span className="menu-row__name">{m.name}</span>
+                <span className="menu-row__price">{yen(m.price)}</span>
+                <span className="menu-row__edit" aria-hidden>編集 ›</span>
+              </button>
+              <button
+                className={`switch ${m.soldOut ? "is-off" : "is-on"}`}
+                role="switch"
+                aria-checked={!m.soldOut}
+                aria-label={`${m.name} ${m.soldOut ? "売り切れ" : "販売中"}`}
+                onClick={() => void mutate(`/menu/${m.id}`, "PUT", { soldOut: !m.soldOut })}
+              >
+                {m.soldOut ? "売り切れ" : "販売中"}
+              </button>
             </li>
-          );
-        })}
-      </ul>
-      <form className="menu-admin__add" onSubmit={async (e) => {
-        e.preventDefault();
-        if (await mutate("/menu", "POST", { name, price: Number(price) }, `「${name}」を追加しました`)) { setName(""); setPrice(""); }
-      }}>
-        <h2>商品を追加</h2>
-        <label className="field">商品名<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 焼きそば" /></label>
-        <label className="field">価格（円）<input className="input" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="例: 400" /></label>
-        <Btn type="submit" variant="primary" disabled={!name.trim() || price === ""}>追加する</Btn>
-      </form>
-      {deleting && (
-        <Modal title={`「${deleting.name}」を削除しますか？`} onClose={() => setDeleting(null)}>
-          <p>レジに表示されなくなります。これまでの売上の記録は残ります。</p>
-          <div className="modal__actions">
-            <Btn onClick={() => setDeleting(null)}>やめる</Btn>
-            <Btn variant="danger" onClick={async () => { if (await mutate(`/menu/${deleting.id}`, "DELETE", undefined, "削除しました")) setDeleting(null); }}>削除する</Btn>
-          </div>
+          ))}
+        </ul>
+        <Btn variant="accent" onClick={() => open("new")}>＋ 商品を追加</Btn>
+        <p className="hint">価格を変えても、すでに会計した注文の金額は変わりません。</p>
+      </section>
+
+      {editing && (
+        <Modal title={editing === "new" ? "商品を追加" : "商品を編集"} onClose={() => setEditing(null)}>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const ok = editing === "new"
+              ? await mutate("/menu", "POST", { name, price: Number(price) }, `「${name}」を追加しました`)
+              : await mutate(`/menu/${editing.id}`, "PUT", { name, price: Number(price) }, `「${name}」を保存しました`);
+            if (ok) setEditing(null);
+          }}>
+            <label className="field">商品名<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 焼きそば" autoFocus /></label>
+            <label className="field">価格<span className="input-unit"><input className="input" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="400" />円</span></label>
+            {editing !== "new" && (
+              <div className="row">
+                <Btn variant="ghost" onClick={() => void move(idx, -1)} disabled={idx <= 0}>↑ 上へ</Btn>
+                <Btn variant="ghost" onClick={() => void move(idx, 1)} disabled={idx >= st.menu.length - 1}>↓ 下へ</Btn>
+              </div>
+            )}
+            <div className="modal__actions">
+              {editing !== "new" && !confirmDelete && <Btn variant="ghost" className="mr-auto" onClick={() => setConfirmDelete(true)}>削除</Btn>}
+              {editing !== "new" && confirmDelete && (
+                <Btn variant="danger" className="mr-auto" onClick={async () => { if (await mutate(`/menu/${editing.id}`, "DELETE", undefined, "削除しました")) setEditing(null); }}>本当に削除する</Btn>
+              )}
+              <Btn type="submit" variant="accent" disabled={!name.trim() || price === ""}>保存</Btn>
+            </div>
+          </form>
         </Modal>
       )}
     </>
   );
 }
 
-function ClosingTab({ sum, call, setSum, setInfo }: {
+function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
   sum: DaySummary;
   call: <T>(path: string, init?: RequestInit) => Promise<T | null>;
   setSum: (s: DaySummary) => void;
   setInfo: (s: string) => void;
+  onCsv: () => void;
 }) {
   const [float, setFloat] = useState(String(sum.floatCash || ""));
   const [den, setDen] = useState<Record<string, string>>(() =>
-    Object.fromEntries(DENOMINATIONS.map((d) => [d, sum.closing ? String(sum.closing.denominations[d] ?? "") : ""])),
+    Object.fromEntries(DENOMINATIONS.map((d) => [d, sum.closing ? String(sum.closing.denominations[d] || "") : ""])),
   );
   const [memo, setMemo] = useState(sum.closing?.memo ?? "");
   const counted = DENOMINATIONS.reduce((s, d) => s + d * Number(den[d] || 0), 0);
   const diff = counted - sum.expectedCash;
+  const stale = sum.closing && sum.closing.expected !== sum.expectedCash;
+
   return (
     <>
-      <section className="closing">
-        <h2>1. 釣り銭準備金（開店時にレジに入れたお金）</h2>
+      <section className="panel step">
+        <h3 className="panel__title"><span className="step__no">1</span>開店時：釣り銭準備金</h3>
+        <p className="hint">開店前にレジに入れたお金です。</p>
         <div className="row">
-          <label className="price-input"><input className="input" inputMode="numeric" value={float} onChange={(e) => setFloat(e.target.value.replace(/\D/g, ""))} aria-label="釣り銭準備金" />円</label>
+          <span className="input-unit"><input className="input" inputMode="numeric" value={float} onChange={(e) => setFloat(e.target.value.replace(/\D/g, ""))} aria-label="釣り銭準備金" />円</span>
           <Btn onClick={async () => {
             const s = await call<DaySummary>("/float", { method: "PUT", body: JSON.stringify({ amount: Number(float || 0) }) });
             if (s) { setSum(s); setInfo("釣り銭準備金を保存しました"); }
           }}>保存</Btn>
         </div>
       </section>
-      <section className="closing">
-        <h2>2. 閉店後に現金を数える</h2>
-        <table className="table den-table">
-          <thead><tr><th>金種</th><th>枚数</th><th className="num">金額</th></tr></thead>
-          <tbody>
-            {DENOMINATIONS.map((d) => (
-              <tr key={d}>
-                <td>{d.toLocaleString()}円</td>
-                <td><input className="input input--narrow" inputMode="numeric" aria-label={`${d}円の枚数`} value={den[d]} onChange={(e) => setDen({ ...den, [d]: e.target.value.replace(/\D/g, "") })} /></td>
-                <td className="num">{yen(d * Number(den[d] || 0))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      <section className="panel step">
+        <h3 className="panel__title"><span className="step__no">2</span>閉店後：現金を数える</h3>
+        <div className="den-grid">
+          {DENOMINATIONS.map((d) => (
+            <label key={d} className="den">
+              <span className="den__name">{d.toLocaleString()}円</span>
+              <input className="input" inputMode="numeric" value={den[d]} onChange={(e) => setDen({ ...den, [d]: e.target.value.replace(/\D/g, "") })} aria-label={`${d}円の枚数`} />
+              <span className="den__unit">枚</span>
+            </label>
+          ))}
+        </div>
       </section>
-      <section className="closing">
-        <h2>3. 結果</h2>
-        <dl className="closing__result">
+
+      <section className="panel step">
+        <h3 className="panel__title"><span className="step__no">3</span>確認して記録</h3>
+        <dl className="result">
           <div><dt>数えた現金</dt><dd>{yen(counted)}</dd></div>
-          <div><dt>あるはずの現金</dt><dd>{yen(sum.expectedCash)}<small>（準備金 {yen(sum.floatCash)} ＋ 売上 {yen(sum.sales)}）</small></dd></div>
-          <div className={`closing__diff ${diff === 0 ? "closing__diff--ok" : "closing__diff--ng"}`}>
-            <dt>差額</dt>
-            <dd>{diff === 0 ? "✓ ぴったり（0円）" : `${diff > 0 ? "＋" : "−"}${yen(Math.abs(diff))}（${diff > 0 ? "多い" : "足りない"}）`}</dd>
-          </div>
+          <div><dt>あるはずの現金</dt><dd>{yen(sum.expectedCash)}</dd></div>
         </dl>
-        <label className="field">メモ（締めた人の名前、差額の理由など）<input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} /></label>
-        <Btn variant="primary" big onClick={async () => {
+        <div className={`diff ${diff === 0 ? "is-ok" : "is-ng"}`}>
+          {diff === 0 ? "✓ ぴったりです" : `${diff > 0 ? "多い" : "足りない"}：${yen(Math.abs(diff))}`}
+        </div>
+        <label className="field">メモ<input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="締めた人の名前、差額の理由など" /></label>
+        {stale && <Banner kind="warn">記録した後に売上が変わっています。もう一度記録してください。</Banner>}
+        <Btn variant="accent" big onClick={async () => {
           const s = await call<DaySummary>("/closing", { method: "POST", body: JSON.stringify({ denominations: Object.fromEntries(DENOMINATIONS.map((d) => [d, Number(den[d] || 0)])), memo }) });
-          if (s) { setSum(s); setInfo("レジ締めを記録しました。CSVも書き出して保管してください"); }
+          if (s) { setSum(s); setInfo("レジ締めを記録しました"); }
         }}>レジ締めを記録する</Btn>
-        {sum.closing && <p className="hint">記録済み: {timeOf(sum.closing.at)}（差額 {yen(sum.closing.diff)}）</p>}
-        {sum.closing && sum.closing.expected !== sum.expectedCash && <p className="warn-box">記録した後に売上や準備金が変わっています。もう一度「レジ締めを記録する」を押してください。</p>}
+        {sum.closing && !stale && <p className="hint">{timeOf(sum.closing.at)} に記録済み。CSVも保存しておきましょう。 <button className="link" onClick={onCsv}>CSVで書き出す</button></p>}
       </section>
     </>
   );
@@ -391,31 +420,33 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const [adminPin, setAdminPin] = useState("");
   return (
     <>
-      <form className="settings" onSubmit={(e) => { e.preventDefault(); void mutate("/settings", "PUT", { name, color, prefix, ticketCount: Number(count) }, "店舗の設定を保存しました"); }}>
-        <h2>店舗</h2>
+      <form className="panel" onSubmit={(e) => { e.preventDefault(); void mutate("/settings", "PUT", { name, color, prefix, ticketCount: Number(count) }, "保存しました"); }}>
+        <h3 className="panel__title">お店</h3>
         <label className="field">店舗名<input className="input" value={name} onChange={(e) => setName(e.target.value)} /></label>
-        <label className="field">店舗の色（画面上部と番号札の色）
-          <span className="row"><input type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="店舗の色" /><code>{color}</code></span>
-        </label>
-        <label className="field">札の記号（例: A → 「A-5」）<input className="input input--narrow" value={prefix} maxLength={3} onChange={(e) => setPrefix(e.target.value)} /></label>
-        <label className="field">番号札の枚数<input className="input input--narrow" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ""))} /></label>
-        <Btn type="submit" variant="primary">保存</Btn>
+        <div className="field-row">
+          <label className="field">色<span className="row"><input className="color-input" type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="店舗の色" /></span></label>
+          <label className="field">札の記号<input className="input input--narrow" value={prefix} maxLength={3} onChange={(e) => setPrefix(e.target.value)} placeholder="A" /></label>
+          <label className="field">札の枚数<input className="input input--narrow" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ""))} /></label>
+        </div>
+        <p className="hint">札は「{ticketLabel(prefix, 5)}」のように表示されます。</p>
+        <Btn type="submit" variant="accent">保存</Btn>
       </form>
-      <form className="settings" onSubmit={async (e) => {
+      <form className="panel" onSubmit={async (e) => {
         e.preventDefault();
         const body: Record<string, string> = {};
         if (staffCode) body.staffCode = staffCode;
         if (adminPin) body.adminPin = adminPin;
-        if (await mutate("/codes", "PUT", body, "合言葉・PINを変更しました。ほかの端末では入力し直しが必要です")) { setStaffCode(""); setAdminPin(""); }
+        if (await mutate("/codes", "PUT", body, "変更しました。ほかの端末では入力し直しが必要です")) { setStaffCode(""); setAdminPin(""); }
       }}>
-        <h2>合言葉・PIN</h2>
-        <p className="hint">
-          {st.shop.configured ? "合言葉は設定済みです。" : "合言葉がまだ設定されていません。設定するまでレジ・厨房は使えません。"}
-          {st.hasAdminPin ? " 管理PINは設定済みです。" : " 管理PINはまだ設定されていません（全体PINでのみ管理できます）。"}
-        </p>
-        <label className="field">レジ・厨房の合言葉（部員に共有する。4文字以上）<input className="input" value={staffCode} onChange={(e) => setStaffCode(e.target.value)} autoComplete="off" /></label>
-        <label className="field">管理PIN（管理者だけが知る。4文字以上）<input className="input" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} autoComplete="off" /></label>
-        <Btn type="submit" variant="primary" disabled={!staffCode && !adminPin}>変更する</Btn>
+        <h3 className="panel__title">合言葉・PIN</h3>
+        {!st.shop.configured && <Banner kind="warn">合言葉が未設定です。設定するまでレジと厨房は使えません。</Banner>}
+        <label className="field">レジ・厨房の合言葉<small className="muted">部員に共有します（4文字以上）{st.shop.configured ? "・設定済み" : ""}</small>
+          <input className="input" value={staffCode} onChange={(e) => setStaffCode(e.target.value)} autoComplete="off" placeholder="変更するときだけ入力" />
+        </label>
+        <label className="field">管理PIN<small className="muted">管理する人だけが知るもの（4文字以上）{st.hasAdminPin ? "・設定済み" : ""}</small>
+          <input className="input" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} autoComplete="off" placeholder="変更するときだけ入力" />
+        </label>
+        <Btn type="submit" variant="accent" disabled={!staffCode && !adminPin}>変更する</Btn>
       </form>
     </>
   );
