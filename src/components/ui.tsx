@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import type { ShopPublic } from "../../shared/types";
 import type { ConnStatus } from "../sync";
 import { api, ApiError, buzz } from "../util";
+import { IconAlert, IconBack, IconCheck, IconClose, IconInfo, IconOffline } from "./icons";
 
 type ShopLook = Pick<ShopPublic, "name" | "color" | "prefix">;
 
@@ -19,8 +20,24 @@ export function readableOn(hex: string): string {
 }
 
 export function accentStyle(color: string | undefined): CSSProperties {
-  const c = color ?? "#334155";
-  return { "--accent": c, "--on-accent": readableOn(c) } as CSSProperties;
+  const c = color ?? "#3f3f46";
+  // color-mix() を使う派生色は、--accent を変えた要素で定義し直さないと親の色のままになるため、ここでまとめて渡す
+  return {
+    "--accent": c,
+    "--on-accent": readableOn(c),
+    "--accent-soft": `color-mix(in srgb, ${c} 9%, white)`,
+    "--accent-ring": `color-mix(in srgb, ${c} 35%, transparent)`,
+  } as CSSProperties;
+}
+
+/** 金額。数字を大きく、「円」を小さく表示する。 */
+export function Money({ value, className = "" }: { value: number; className?: string }) {
+  return (
+    <span className={`money ${className}`}>
+      <span className="money__num">{value.toLocaleString("ja-JP")}</span>
+      <span className="money__unit">円</span>
+    </span>
+  );
 }
 
 /** 画面全体の枠。店舗の色を --accent として子要素に渡す。 */
@@ -45,7 +62,7 @@ export function AppBar({ shop, title, right, back }: { shop: ShopLook | null; ti
   return (
     <header className="appbar">
       <div className="appbar__left">
-        {back && <a className="appbar__back" href={back} aria-label="戻る">‹</a>}
+        {back && <a className="appbar__back" href={back} aria-label="トップに戻る"><IconBack size={22} /></a>}
         <ShopBadge shop={shop} />
         <div className="appbar__titles">
           <span className="appbar__shop">{shop?.name ?? "読み込み中"}</span>
@@ -73,7 +90,8 @@ export function ConnBadge({ status, pending }: { status: ConnStatus; pending: nu
     : `送信中 ${pending}件`;
   return (
     <span className={`conn conn--${status}`} role="status" aria-live="polite">
-      <span aria-hidden>{status === "offline" ? "!" : "…"}</span>{label}
+      {status === "offline" ? <IconOffline size={16} /> : <span className="conn__spinner" aria-hidden />}
+      {label}
     </span>
   );
 }
@@ -119,7 +137,7 @@ export function Modal({ title, children, onClose }: { title: string; children: R
       <div className="modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <h2 className="modal__title">{title}</h2>
-          <button className="modal__close" onClick={onClose} aria-label="閉じる">×</button>
+          <button className="modal__close" onClick={onClose} aria-label="閉じる"><IconClose size={20} /></button>
         </div>
         {children}
       </div>
@@ -128,10 +146,10 @@ export function Modal({ title, children, onClose }: { title: string; children: R
 }
 
 export function Banner({ kind, children }: { kind: "warn" | "error" | "ok" | "info"; children: ReactNode }) {
-  const icon = { warn: "!", error: "×", ok: "✓", info: "i" }[kind];
+  const icon = { warn: <IconAlert size={18} />, error: <IconAlert size={18} />, ok: <IconCheck size={18} />, info: <IconInfo size={18} /> }[kind];
   return (
     <div className={`banner banner--${kind}`} role={kind === "error" || kind === "warn" ? "alert" : "status"}>
-      <span className="banner__icon" aria-hidden>{icon}</span>
+      <span className="banner__icon">{icon}</span>
       <div className="banner__body">{children}</div>
     </div>
   );
@@ -167,6 +185,13 @@ export function CodeGate({
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // この端末で初めて開いたときは店舗の色と名前がまだないので、取りに行く
+  const [fetched, setFetched] = useState<ShopLook | null>(null);
+  useEffect(() => {
+    if (shop) return;
+    api<ShopPublic>(`/api/shops/${encodeURIComponent(shopId)}/public`, null).then(setFetched).catch(() => {});
+  }, [shop, shopId]);
+  const look = shop ?? fetched;
   const submit = async () => {
     setBusy(true);
     setError("");
@@ -186,7 +211,7 @@ export function CodeGate({
     }
   };
   return (
-    <Page shop={shop} className="page--center">
+    <Page shop={look} className="page--center">
       <form
         className="gate"
         onSubmit={(e) => {
@@ -194,8 +219,8 @@ export function CodeGate({
           void submit();
         }}
       >
-        <ShopBadge shop={shop} size="lg" />
-        <div className="gate__shop">{shop?.name}</div>
+        <ShopBadge shop={look} size="lg" />
+        <div className="gate__shop">{look?.name}</div>
         <h1 className="gate__title">{title}</h1>
         <label htmlFor="code" className="gate__label">{label}</label>
         <input id="code" className="input input--big" type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
@@ -203,7 +228,7 @@ export function CodeGate({
         <Btn type="submit" variant="accent" big disabled={!code || busy}>{busy ? "確認中…" : "はじめる"}</Btn>
         <p className="hint">この端末では、次から入力不要です。</p>
         {import.meta.env.DEV && devHint && <p className="dev-hint">開発用: {devHint}</p>}
-        <a className="link gate__home" href="/">トップに戻る</a>
+        <a className="gate__home" href="/">トップに戻る</a>
       </form>
     </Page>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
-import { AppBar, Banner, Btn, ConnBadge, Modal, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
+import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
+import { IconBack, IconBackspace, IconMinus, IconNext, IconPlus, IconTicket } from "../components/icons";
 import { useConnection, viewMenu, viewOrders } from "../sync";
 import { buzz, load, save, uuid } from "../util";
 
@@ -103,9 +104,10 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       <Page shop={shop}>
         {appbar}
         <main className="done">
+          <div className="done__check" aria-hidden><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg></div>
           <p className="done__lead">この札を渡してください</p>
           <p className="done__ticket">{done.ticket}</p>
-          <p className="done__change">お釣り <b>{yen(done.change)}</b></p>
+          <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
           {status !== "online" && (
             <Banner kind="warn">オフラインのため、まだ厨房に届いていません。口頭で伝えてください（電波が戻ると自動で送られます）。</Banner>
           )}
@@ -146,7 +148,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
             {qty > 0 && (
               <>
                 <span className="menu-card__qty" aria-hidden>{qty}</span>
-                <button className="menu-card__minus" onClick={() => add(m.id, -1)} aria-label={`${m.name}を1つ減らす`}>−</button>
+                <button className="menu-card__minus" onClick={() => add(m.id, -1)} aria-label={`${m.name}を1つ減らす`}><IconMinus size={22} /></button>
               </>
             )}
           </div>
@@ -158,12 +160,12 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const pay = (
     <section className="pay" aria-label="お会計">
       <div className="pay__sum">
-        <div className="pay__line"><span>合計</span><b className="pay__total">{yen(total)}</b></div>
-        <div className="pay__line"><span>お預かり</span><b>{received ? yen(receivedNum) : "—"}</b></div>
+        <div className="pay__line pay__line--total"><span>合計</span><Money value={total} /></div>
+        <div className="pay__line"><span>お預かり</span>{received ? <Money value={receivedNum} /> : <b className="pay__dash">—</b>}</div>
       </div>
       <div className={`pay__change ${received && shortBy <= 0 ? "is-ready" : ""} ${received && shortBy > 0 ? "is-short" : ""}`} aria-live="polite">
         <span>{received && shortBy > 0 ? "たりません" : "お釣り"}</span>
-        <b>{!received ? "—" : shortBy > 0 ? yen(shortBy) : yen(change)}</b>
+        {!received ? <b className="pay__dash">—</b> : <Money value={shortBy > 0 ? shortBy : change} />}
       </div>
       <div className="quick" role="group" aria-label="お預かり金額">
         <button className={`chip ${received !== "" && receivedNum === total ? "is-on" : ""}`} onClick={() => { buzz(); setReceived(String(total)); setKeypad(false); }} disabled={total === 0}>ちょうど</button>
@@ -177,11 +179,11 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
           {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "00"].map((k) => (
             <button key={k} className="key" onClick={() => { buzz(); setReceived((r) => (r + k).replace(/^0+(?=\d)/, "").slice(0, 7)); }}>{k}</button>
           ))}
-          <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す">⌫</button>
+          <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す"><IconBackspace size={24} /></button>
         </div>
       )}
       <div className="pay__ticket">
-        <span>渡す札</span>
+        <span className="pay__ticket-label"><IconTicket size={18} />渡す札</span>
         <b>{ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし"}</b>
         <button className="link" onClick={() => setPickTicket(true)}>変更</button>
       </div>
@@ -248,9 +250,9 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
                     <li key={l.itemId}>
                       <span className="order-list__name">{l.name}</span>
                       <span className="stepper">
-                        <button onClick={() => add(l.itemId, -1)} aria-label={`${l.name}を1つ減らす`}>−</button>
+                        <button onClick={() => add(l.itemId, -1)} aria-label={`${l.name}を1つ減らす`}><IconMinus size={18} /></button>
                         <b>{l.qty}</b>
-                        <button onClick={() => add(l.itemId, 1)} disabled={l.soldOut} aria-label={`${l.name}を1つ増やす`}>＋</button>
+                        <button onClick={() => add(l.itemId, 1)} disabled={l.soldOut} aria-label={`${l.name}を1つ増やす`}><IconPlus size={18} /></button>
                       </span>
                       <span className="order-list__sub">{yen(l.price * l.qty)}</span>
                     </li>
@@ -277,15 +279,15 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
           <div className="bottom-bar">
             <div className="bottom-bar__sum">
               <span className="bottom-bar__count">{itemCount ? `${itemCount}点` : "未選択"}</span>
-              <b className="bottom-bar__total" aria-live="polite">{yen(total)}</b>
+              <span className="bottom-bar__total" aria-live="polite"><Money value={total} /></span>
               {lines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
             </div>
-            <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ</Btn>
+            <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ<IconNext size={22} /></Btn>
           </div>
         </>
       ) : (
         <main className="register register--pay">
-          <button className="back-link" onClick={() => setStep("order")}>‹ 注文に戻る</button>
+          <button className="back-link" onClick={() => setStep("order")}><IconBack size={20} />注文に戻る</button>
           <p className="pay__items">{lines.map((l) => `${l.name}×${l.qty}`).join("、")}</p>
           {pay}
         </main>

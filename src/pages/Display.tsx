@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useConnection } from "../sync";
 import { accentStyle, useNow, useWakeLock } from "../components/ui";
+import { IconBell, IconBellOff } from "../components/icons";
 
 const LONG_WAIT_MS = 5 * 60 * 1000;
 
@@ -69,6 +70,7 @@ export function Display({ shopId }: { shopId: string }) {
         <span>番号札をお持ちの方は、受け取り口へお越しください</span>
         {state.status !== "online" && <span className="display__offline">接続中…</span>}
         <button className="display__sound" onClick={() => { setSound(!sound); if (!sound) chime(); }}>
+          {sound ? <IconBell size={18} /> : <IconBellOff size={18} />}
           {sound ? "音あり" : "音なし（押すと音あり）"}
         </button>
       </footer>

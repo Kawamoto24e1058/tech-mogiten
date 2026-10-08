@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DaySummary, ShopPublic } from "../../shared/types";
 import { yen } from "../../shared/logic";
-import { AppBar, Banner, Page, accentStyle } from "../components/ui";
+import { AppBar, Banner, Money, Page, accentStyle } from "../components/ui";
 import { ItemRanking } from "../components/Summary";
 import { api, ApiError, todayJst } from "../util";
 
@@ -43,8 +43,8 @@ export function MasterAdmin({ code, onAuthError }: { code: string; onAuthError: 
         {!data ? <p className="hint">読み込んでいます…</p> : (
           <>
             <div className="kpis">
-              <div className="kpi kpi--main"><span>2店舗の合計</span><b>{yen(total)}</b></div>
-              <div className="kpi"><span>注文</span><b>{count}<small>件</small></b></div>
+              <div className="kpi kpi--main"><span>2店舗の合計</span><Money value={total} /></div>
+              <div className="kpi"><span>注文</span><span className="money"><span className="money__num">{count}</span><span className="money__unit">件</span></span></div>
             </div>
             <div className="shop-cards">
               {data.map(({ shop, summary }) => {
@@ -57,8 +57,8 @@ export function MasterAdmin({ code, onAuthError }: { code: string; onAuthError: 
                       <a className="link" href={`/${shop.id}/admin`}>詳しく ›</a>
                     </header>
                     <div className="shop-card__nums">
-                      <div><span>売上</span><b>{yen(summary.sales)}</b></div>
-                      <div><span>注文</span><b>{summary.orderCount}件</b></div>
+                      <div><span>売上</span><Money value={summary.sales} /></div>
+                      <div><span>注文</span><span className="money"><span className="money__num">{summary.orderCount}</span><span className="money__unit">件</span></span></div>
                     </div>
                     {!shop.configured && <Banner kind="warn">合言葉が未設定です</Banner>}
                     <ItemRanking s={summary} limit={3} />

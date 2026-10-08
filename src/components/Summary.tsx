@@ -1,12 +1,13 @@
 import type { DaySummary } from "../../shared/types";
 import { yen } from "../../shared/logic";
+import { Money } from "./ui";
 
 export function Kpis({ s, compact }: { s: DaySummary; compact?: boolean }) {
   return (
     <div className={`kpis ${compact ? "kpis--compact" : ""}`}>
-      <div className="kpi kpi--main"><span>売上</span><b>{yen(s.sales)}</b></div>
-      <div className="kpi"><span>注文</span><b>{s.orderCount}<small>件</small></b></div>
-      {!compact && <div className="kpi"><span>あるはずの現金</span><b>{yen(s.expectedCash)}</b></div>}
+      <div className="kpi kpi--main"><span>売上</span><Money value={s.sales} /></div>
+      <div className="kpi"><span>注文</span><span className="money"><span className="money__num">{s.orderCount}</span><span className="money__unit">件</span></span></div>
+      {!compact && <div className="kpi"><span>あるはずの現金</span><Money value={s.expectedCash} /></div>}
     </div>
   );
 }
