@@ -10,8 +10,8 @@ import { DENOMINATIONS } from "../shared/types";
 import type { Env } from "./index";
 
 const DEFAULT_SHOPS: Record<string, { name: string; color: string; prefix: string }> = {
-  a: { name: "A店", color: "#1d4ed8", prefix: "A" },
-  b: { name: "B店", color: "#c2410c", prefix: "B" },
+  a: { name: "A店", color: "#1b4f8a", prefix: "A" }, // 藍
+  b: { name: "B店", color: "#c43a12", prefix: "B" }, // 朱
 };
 const DEMO_MENUS: Record<string, [string, number][]> = {
   a: [["焼きそば", 400], ["焼きそば 大盛り", 500], ["フランクフルト", 300], ["ラムネ", 150]],

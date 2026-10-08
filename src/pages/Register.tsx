@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
-import { IconBack, IconBackspace, IconMinus, IconNext, IconPlus, IconTicket } from "../components/icons";
+import { IconBack, IconBackspace, IconMinus, IconPlus } from "../components/icons";
+import type { CSSProperties } from "react";
 import { useConnection, viewMenu, viewOrders } from "../sync";
 import { buzz, load, save, uuid } from "../util";
 
@@ -104,9 +105,11 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       <Page shop={shop}>
         {appbar}
         <main className="done">
-          <div className="done__check" aria-hidden><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg></div>
           <p className="done__lead">この札を渡してください</p>
-          <p className="done__ticket">{done.ticket}</p>
+          <div className="done__ticket">
+            <span className="done__ticket-num">{done.ticket}</span>
+            <span className="stamp done__stamp">会計済</span>
+          </div>
           <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
           {status !== "online" && (
             <Banner kind="warn">オフラインのため、まだ厨房に届いていません。口頭で伝えてください（電波が戻ると自動で送られます）。</Banner>
@@ -132,10 +135,10 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const menuGrid = (
     <section className="menu-grid" aria-label="メニュー">
       {menu.length === 0 && <p className="hint">メニューがありません。管理画面で登録してください。</p>}
-      {menu.map((m) => {
+      {menu.map((m, i) => {
         const qty = qtyOf(m.id);
         return (
-          <div key={m.id} className={`menu-card ${m.soldOut ? "is-soldout" : ""} ${qty ? "is-selected" : ""}`}>
+          <div key={m.id} className={`menu-card ${m.soldOut ? "is-soldout" : ""} ${qty ? "is-selected" : ""}`} style={{ "--i": i } as CSSProperties}>
             <button
               className="menu-card__main"
               disabled={m.soldOut}
@@ -143,8 +146,9 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
               aria-label={`${m.name} ${yen(m.price)}${m.soldOut ? " 売り切れ" : ""}${qty ? ` 現在${qty}個` : ""}`}
             >
               <span className="menu-card__name">{m.name}</span>
-              <span className="menu-card__price">{m.soldOut ? "売り切れ" : yen(m.price)}</span>
+              <span className="menu-card__price">{yen(m.price)}</span>
             </button>
+            {m.soldOut && <span className="stamp menu-card__soldout">売切</span>}
             {qty > 0 && (
               <>
                 <span className="menu-card__qty" aria-hidden>{qty}</span>
@@ -183,7 +187,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         </div>
       )}
       <div className="pay__ticket">
-        <span className="pay__ticket-label"><IconTicket size={18} />渡す札</span>
+        <span className="pay__ticket-label">渡す札</span>
         <b>{ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし"}</b>
         <button className="link" onClick={() => setPickTicket(true)}>変更</button>
       </div>
@@ -282,7 +286,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
               <span className="bottom-bar__total" aria-live="polite"><Money value={total} /></span>
               {lines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
             </div>
-            <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ<IconNext size={22} /></Btn>
+            <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ</Btn>
           </div>
         </>
       ) : (

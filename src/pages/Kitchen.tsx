@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Order } from "../../shared/types";
 import { ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Btn, Banner, ConnBadge, Modal, Notices, Page, useIsWide, useNow, useWakeLock } from "../components/ui";
-import { IconBox, IconCheck, IconClock } from "../components/icons";
+import type { CSSProperties } from "react";
 import { useConnection, viewMenu, viewOrders } from "../sync";
 import { minutesSince } from "../util";
 
@@ -38,15 +38,15 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
     [...cooking, ...ready].filter((o) => o.ticket != null && !o.ticketReleased).map((o) => o.ticket!).filter((t, i, a) => a.indexOf(t) !== i),
   );
 
-  const card = (o: View) => {
+  const card = (o: View, i: number) => {
     const mins = minutesSince(o.status === "ready" && o.readyAt ? o.readyAt : o.createdAt, now);
     return (
-      <article key={o.id} className={`kcard kcard--${o.status}`} aria-label={`${label(o)} ${TAB_LABEL[o.status as Tab]}`}>
+      <article key={o.id} className={`kcard kcard--${o.status}`} style={{ "--i": i } as CSSProperties} aria-label={`${label(o)} ${TAB_LABEL[o.status as Tab]}`}>
         <div className="kcard__head">
           <span className="kcard__ticket">{label(o)}</span>
           <div className="kcard__side">
-            <span className={`pill pill--${o.status}`}><span className="pill__dot" aria-hidden />{TAB_LABEL[o.status as Tab]}</span>
-            <span className={`kcard__time ${mins >= 10 ? "is-late" : ""}`}><IconClock size={14} />{mins === 0 ? "たった今" : `${mins}分前`}</span>
+            <span className={`pill pill--${o.status}`}>{TAB_LABEL[o.status as Tab]}</span>
+            <span className={`kcard__time ${mins >= 10 ? "is-late" : ""}`}>{mins === 0 ? "たった今" : `${mins}分前`}</span>
           </div>
         </div>
         {(o.pending || (o.ticket != null && dup.has(o.ticket))) && (
@@ -60,10 +60,10 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
             <li key={l.itemId}><span>{l.name}</span><b>×{l.qty}</b></li>
           ))}
         </ul>
-        {o.status === "cooking" && <Btn variant="ok" big onClick={() => set(o, "ready")}><IconCheck size={22} />できた</Btn>}
+        {o.status === "cooking" && <Btn variant="ok" big onClick={() => set(o, "ready")}>できた</Btn>}
         {o.status === "ready" && (
           <div className="kcard__actions">
-            <Btn variant="accent" big onClick={() => setHanding(o)}><IconBox size={22} />渡す</Btn>
+            <Btn variant="accent" big onClick={() => setHanding(o)}>渡す</Btn>
             <button className="link" onClick={() => set(o, "cooking")}>調理中に戻す</button>
           </div>
         )}
