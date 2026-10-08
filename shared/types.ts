@@ -6,6 +6,8 @@ export interface MenuItem {
   price: number;
   soldOut: boolean;
   sort: number;
+  /** 残り数。null なら数えない */
+  stock: number | null;
 }
 
 export interface OrderLine {
@@ -107,3 +109,6 @@ export interface Closing {
 }
 
 export const DENOMINATIONS = [10000, 5000, 1000, 500, 100, 50, 10, 5, 1] as const;
+
+/** レジから取り消せる時間（これを過ぎたら管理画面から） */
+export const STAFF_CANCEL_WINDOW_MS = 5 * 60 * 1000;

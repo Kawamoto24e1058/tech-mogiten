@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Order } from "../../shared/types";
 import { ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Btn, Banner, ConnBadge, Modal, Notices, Page, useIsWide, useNow, useWakeLock } from "../components/ui";
 import type { CSSProperties } from "react";
 import { useConnection, viewMenu, viewOrders } from "../sync";
-import { minutesSince } from "../util";
+import { chime, load, minutesSince, save } from "../util";
 
 type View = Order & { pending: boolean };
 type Tab = "cooking" | "ready" | "handed";
@@ -20,6 +20,9 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
   const [tab, setTab] = useState<Tab>("cooking");
   const [handing, setHanding] = useState<View | null>(null);
   const [soldOutOpen, setSoldOutOpen] = useState(false);
+  // 新しい注文が来たら音で知らせる（厨房は画面を見ていないことが多いため）
+  const [sound, setSound] = useState(() => load("kitchenSound", false));
+  const seen = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     if (status === "auth") onAuthError();
@@ -31,6 +34,15 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
   const ready = orders.filter((o) => o.status === "ready").sort((a, b) => (a.readyAt ?? 0) - (b.readyAt ?? 0));
   const handed = orders.filter((o) => o.status === "handed").sort((a, b) => (b.handedAt ?? 0) - (a.handedAt ?? 0));
   const lists: Record<Tab, View[]> = { cooking, ready, handed };
+  const cookingIds = cooking.map((o) => o.id).join(",");
+  useEffect(() => {
+    const ids = new Set(cookingIds ? cookingIds.split(",") : []);
+    if (seen.current && sound && [...ids].some((id) => !seen.current!.has(id))) {
+      chime();
+      navigator.vibrate?.([120, 60, 120]);
+    }
+    if (snapshot) seen.current = ids;
+  }, [cookingIds, sound, snapshot]);
   const label = (o: View) => ticketLabel(shop?.prefix ?? "", o.ticket);
   const set = (o: View, s: Tab) => conn.send({ kind: "setStatus", orderId: o.id, status: s });
 
@@ -103,6 +115,13 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
         back="/"
         right={
           <>
+            <button
+              className="appbar__btn"
+              aria-pressed={sound}
+              onClick={() => { const next = !sound; setSound(next); save("kitchenSound", next); if (next) chime(); }}
+            >
+              {sound ? "音あり" : "音なし"}
+            </button>
             <button className="appbar__btn" onClick={() => setSoldOutOpen(true)}>売り切れ{soldOutCount ? `（${soldOutCount}）` : ""}</button>
             <ConnBadge status={status} pending={outbox.length} />
           </>
@@ -150,7 +169,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
           <ul className="toggle-list">
             {menu.map((m) => (
               <li key={m.id}>
-                <span>{m.name}<small className="muted">{yen(m.price)}</small></span>
+                <span>{m.name}<small className="muted">{yen(m.price)}{m.stock != null && ` ・ 残り${m.stock}`}</small></span>
                 <button
                   className={`switch ${m.soldOut ? "is-off" : "is-on"}`}
                   role="switch"

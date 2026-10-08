@@ -1,4 +1,5 @@
 import type { MenuItem, Order, OrderLine, DaySummary, Closing } from "./types";
+import { DENOMINATIONS } from "./types";
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -22,6 +23,20 @@ export function yen(n: number): string {
 export function ticketLabel(prefix: string, ticket: number | null): string {
   if (ticket == null) return "札なし";
   return prefix ? `${prefix}-${ticket}` : String(ticket);
+}
+
+/** お釣りの渡し方（大きいお金から）。例: 650 → [[500,1],[100,1],[50,1]] */
+export function changeBreakdown(amount: number): [number, number][] {
+  const out: [number, number][] = [];
+  let rest = Math.max(0, Math.floor(amount));
+  for (const d of DENOMINATIONS) {
+    const n = Math.floor(rest / d);
+    if (n > 0) {
+      out.push([d, n]);
+      rest -= d * n;
+    }
+  }
+  return out;
 }
 
 export function linesTotal(lines: { price: number; qty: number }[]): number {

@@ -6,16 +6,17 @@ import type {
   ClientMessage, Closing, DisplaySnapshot, MenuItem, NewOrderInput, Op, Order, OrderStatus,
   Role, ServerMessage, ShopPublic, ShopSnapshot,
 } from "../shared/types";
-import { DENOMINATIONS } from "../shared/types";
+import { DENOMINATIONS, STAFF_CANCEL_WINDOW_MS } from "../shared/types";
 import type { Env } from "./index";
 
 const DEFAULT_SHOPS: Record<string, { name: string; color: string; prefix: string }> = {
   a: { name: "A店", color: "#1565c0", prefix: "A" },
   b: { name: "B店", color: "#c2410c", prefix: "B" },
 };
-const DEMO_MENUS: Record<string, [string, number][]> = {
-  a: [["焼きそば", 400], ["焼きそば 大盛り", 500], ["フランクフルト", 300], ["ラムネ", 150]],
-  b: [["チョコバナナクレープ", 350], ["いちごクレープ", 400], ["タピオカミルクティー", 300], ["ホットコーヒー", 150]],
+// [商品名, 価格, 残り数（null なら数えない）]
+const DEMO_MENUS: Record<string, [string, number, number | null][]> = {
+  a: [["焼きそば", 400, null], ["焼きそば 大盛り", 500, 20], ["フランクフルト", 300, null], ["ラムネ", 150, null], ["セット割", -100, null]],
+  b: [["チョコバナナクレープ", 350, null], ["いちごクレープ", 400, 15], ["タピオカミルクティー", 300, null], ["ホットコーヒー", 150, null]],
 };
 /** 渡した後も厨房画面に残す時間（取り消し用） */
 const RECENT_HANDED_MS = 10 * 60 * 1000;
@@ -40,6 +41,14 @@ function json(data: unknown, status = 200): Response {
 async function sha256(text: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** 残り数の入力。空欄・null は「数えない」 */
+function parseStock(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = Math.floor(Number(v));
+  if (!(n >= 0 && n <= 100000)) throw new HttpError(400, "残り数は0以上の数にしてください");
+  return n;
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -85,6 +94,9 @@ export class ShopDO extends DurableObject<Env> {
       );
       CREATE TABLE IF NOT EXISTS auth_fail (at INTEGER NOT NULL);
     `);
+    // 後から追加した列
+    const menuCols = this.sql.exec<{ name: string }>("PRAGMA table_info(menu)").toArray().map((r) => r.name);
+    if (!menuCols.includes("stock")) this.sql.exec("ALTER TABLE menu ADD COLUMN stock INTEGER");
   }
 
   // ---------- 設定 ----------
@@ -116,7 +128,9 @@ export class ShopDO extends DurableObject<Env> {
     this.set("staffHash", await sha256(`${id}:1111`));
     this.set("adminHash", await sha256(`${id}:9999`));
     const items = DEMO_MENUS[id] ?? DEMO_MENUS.a;
-    items.forEach(([name, price], i) => this.sql.exec("INSERT INTO menu (id, name, price, sort) VALUES (?, ?, ?, ?)", crypto.randomUUID(), name, price, i + 1));
+    items.forEach(([name, price, stock], i) =>
+      this.sql.exec("INSERT INTO menu (id, name, price, sort, stock) VALUES (?, ?, ?, ?, ?)", crypto.randomUUID(), name, price, i + 1, stock),
+    );
   }
 
   private shopPublic(): ShopPublic {
@@ -181,9 +195,12 @@ export class ShopDO extends DurableObject<Env> {
 
   private menu(): MenuItem[] {
     return this.sql
-      .exec("SELECT id, name, price, sold_out, sort FROM menu WHERE active = 1 ORDER BY sort, rowid")
+      .exec("SELECT id, name, price, sold_out, sort, stock FROM menu WHERE active = 1 ORDER BY sort, rowid")
       .toArray()
-      .map((r) => ({ id: r.id as string, name: r.name as string, price: r.price as number, soldOut: r.sold_out === 1, sort: r.sort as number }));
+      .map((r) => ({
+        id: r.id as string, name: r.name as string, price: r.price as number, soldOut: r.sold_out === 1, sort: r.sort as number,
+        stock: (r.stock as number | null) ?? null,
+      }));
   }
 
   private order(id: string): Order | null {
@@ -263,6 +280,7 @@ export class ShopDO extends DurableObject<Env> {
     const lines = buildLines(this.menu(), Array.isArray(input.lines) ? input.lines : []);
     if (lines.length === 0) throw new HttpError(400, "注文が空です");
     const total = linesTotal(lines);
+    if (total < 0) throw new HttpError(400, "合計がマイナスです。割引の数を確認してください");
     const received = Math.floor(Number(input.received));
     if (!Number.isFinite(received) || received < total) throw new HttpError(400, "預かり金が足りません");
 
@@ -286,8 +304,31 @@ export class ShopDO extends DurableObject<Env> {
        VALUES (?, ?, ?, 'cooking', ?, ?, ?, ?, ?, ?)`,
       input.id, seq, ticket, JSON.stringify(lines), total, received, received - total, createdAt, businessDay(createdAt),
     );
+    // 残り数を減らし、なくなったら売り切れにする
+    const over: string[] = [];
+    for (const l of lines) {
+      const r = this.sql.exec<{ stock: number | null }>("SELECT stock FROM menu WHERE id = ?", l.itemId).toArray()[0];
+      if (!r || r.stock == null) continue;
+      const left = r.stock - l.qty;
+      if (left < 0) over.push(l.name);
+      this.sql.exec("UPDATE menu SET stock = ?, sold_out = CASE WHEN ? <= 0 THEN 1 ELSE sold_out END WHERE id = ?", Math.max(0, left), left, l.itemId);
+    }
+    if (over.length) warning = [warning, `${over.join("、")}は残り数を超えて売れています。厨房で確認してください`].filter(Boolean).join(" / ");
+
     this.audit("create", input.id, { seq, ticket, total, received, warning });
     return warning;
+  }
+
+  /** 注文の取り消し。残り数を戻す */
+  private cancelOrder(o: Order, reason: string, by: "staff" | "admin") {
+    this.sql.exec("UPDATE orders SET status = 'cancelled', cancelled_at = ?, cancel_reason = ? WHERE id = ?", Date.now(), reason, o.id);
+    for (const l of o.lines) {
+      const r = this.sql.exec<{ stock: number | null }>("SELECT stock FROM menu WHERE id = ?", l.itemId).toArray()[0];
+      if (!r || r.stock == null) continue;
+      // 残り数が 0 で自動的に売り切れになっていたものは、戻ったら販売を再開する
+      this.sql.exec("UPDATE menu SET stock = stock + ?, sold_out = CASE WHEN stock = 0 THEN 0 ELSE sold_out END WHERE id = ?", l.qty, l.itemId);
+    }
+    this.audit("cancel", o.id, { seq: o.seq, total: o.total, previousStatus: o.status, reason, by });
   }
 
   private setStatus(orderId: string, status: "cooking" | "ready" | "handed") {
@@ -419,6 +460,29 @@ export class ShopDO extends DurableObject<Env> {
       return json({ shop: this.shopPublic(), summary: this.daySummary(day) });
     }
 
+    // レジの履歴（スタッフ用）
+    if (path === "/history" && m === "GET") {
+      await this.authorize(req, "staff");
+      const orders = this.sql.exec("SELECT * FROM orders WHERE day = ? ORDER BY seq DESC LIMIT 300", today).toArray().map((r) => this.rowToOrder(r));
+      return json({ orders, serverTime: Date.now(), cancelWindowMs: STAFF_CANCEL_WINDOW_MS });
+    }
+    let hs: RegExpMatchArray | null;
+    if ((hs = path.match(/^\/history\/([^/]+)\/cancel$/)) && m === "POST") {
+      const role = await this.authorize(req, "staff");
+      const o = this.order(decodeURIComponent(hs[1]));
+      if (!o) throw new HttpError(404, "注文が見つかりません");
+      if (o.status === "cancelled") throw new HttpError(409, "すでに取り消されています");
+      if (role === "staff" && Date.now() - o.createdAt > STAFF_CANCEL_WINDOW_MS) {
+        throw new HttpError(403, "会計から5分以上たった注文は、管理画面から取り消してください");
+      }
+      const { reason } = await this.body<{ reason: string }>(req);
+      const r = String(reason ?? "").trim().slice(0, 200);
+      if (!r) throw new HttpError(400, "理由を選んでください");
+      this.cancelOrder(o, r, role === "staff" ? "staff" : "admin");
+      this.broadcast();
+      return json({ ok: true });
+    }
+
     if (!path.startsWith("/admin")) throw new HttpError(404, "見つかりません");
     const role = await this.authorize(req, "admin");
     const p = path.slice("/admin".length);
@@ -478,22 +542,23 @@ export class ShopDO extends DurableObject<Env> {
     }
 
     if (p === "/menu" && m === "POST") {
-      const b = await this.body<{ name: string; price: number }>(req);
+      const b = await this.body<{ name: string; price: number; stock?: number | null }>(req);
       const name = String(b.name ?? "").trim().slice(0, 30);
       const price = Math.floor(Number(b.price));
       if (!name) throw new HttpError(400, "商品名を入力してください");
-      if (!(price >= 0 && price <= 100000)) throw new HttpError(400, "価格が不正です");
+      if (!(price >= -100000 && price <= 100000)) throw new HttpError(400, "価格が不正です");
+      const stock = parseStock(b.stock);
       const sort = (this.sql.exec<{ m: number | null }>("SELECT MAX(sort) AS m FROM menu").one().m ?? 0) + 1;
       const id = crypto.randomUUID();
-      this.sql.exec("INSERT INTO menu (id, name, price, sort) VALUES (?, ?, ?, ?)", id, name, price, sort);
-      this.audit("menu.add", null, { id, name, price });
+      this.sql.exec("INSERT INTO menu (id, name, price, sort, stock) VALUES (?, ?, ?, ?, ?)", id, name, price, sort, stock);
+      this.audit("menu.add", null, { id, name, price, stock });
       this.broadcast();
       return json(this.adminState(day));
     }
     if ((seg = p.match(/^\/menu\/([^/]+)$/))) {
       const id = decodeURIComponent(seg[1]);
       if (m === "PUT") {
-        const b = await this.body<Partial<{ name: string; price: number; soldOut: boolean; sort: number }>>(req);
+        const b = await this.body<Partial<{ name: string; price: number; soldOut: boolean; sort: number; stock: number | null }>>(req);
         if (b.name != null) {
           const name = String(b.name).trim().slice(0, 30);
           if (!name) throw new HttpError(400, "商品名を入力してください");
@@ -501,8 +566,13 @@ export class ShopDO extends DurableObject<Env> {
         }
         if (b.price != null) {
           const price = Math.floor(Number(b.price));
-          if (!(price >= 0 && price <= 100000)) throw new HttpError(400, "価格が不正です");
+          if (!(price >= -100000 && price <= 100000)) throw new HttpError(400, "価格が不正です");
           this.sql.exec("UPDATE menu SET price = ? WHERE id = ?", price, id);
+        }
+        if (b.stock !== undefined) {
+          const stock = parseStock(b.stock);
+          // 残り数を入れ直したら販売を再開する（0 なら売り切れ）
+          this.sql.exec("UPDATE menu SET stock = ?, sold_out = CASE WHEN ? IS NULL THEN sold_out WHEN ? <= 0 THEN 1 ELSE 0 END WHERE id = ?", stock, stock, stock, id);
         }
         if (b.soldOut != null) this.sql.exec("UPDATE menu SET sold_out = ? WHERE id = ?", b.soldOut ? 1 : 0, id);
         if (b.sort != null) this.sql.exec("UPDATE menu SET sort = ? WHERE id = ?", Math.floor(Number(b.sort)), id);
@@ -523,8 +593,7 @@ export class ShopDO extends DurableObject<Env> {
       const o = this.order(id);
       if (!o) throw new HttpError(404, "注文が見つかりません");
       if (o.status === "cancelled") throw new HttpError(409, "すでにキャンセルされています");
-      this.sql.exec("UPDATE orders SET status = 'cancelled', cancelled_at = ?, cancel_reason = ? WHERE id = ?", Date.now(), r, id);
-      this.audit("cancel", id, { seq: o.seq, total: o.total, previousStatus: o.status, reason: r });
+      this.cancelOrder(o, r, "admin");
       this.broadcast();
       return json(this.adminState(day));
     }

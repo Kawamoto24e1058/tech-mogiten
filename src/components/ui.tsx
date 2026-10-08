@@ -145,12 +145,13 @@ export function Modal({ title, children, onClose }: { title: string; children: R
   );
 }
 
-export function Banner({ kind, children }: { kind: "warn" | "error" | "ok" | "info"; children: ReactNode }) {
+export function Banner({ kind, children, action }: { kind: "warn" | "error" | "ok" | "info"; children: ReactNode; action?: ReactNode }) {
   const icon = { warn: <IconAlert size={18} />, error: <IconAlert size={18} />, ok: <IconCheck size={18} />, info: <IconInfo size={18} /> }[kind];
   return (
     <div className={`banner banner--${kind}`} role={kind === "error" || kind === "warn" ? "alert" : "status"}>
       <span className="banner__icon">{icon}</span>
       <div className="banner__body">{children}</div>
+      {action}
     </div>
   );
 }
@@ -160,9 +161,8 @@ export function Notices({ notices, onDismiss }: { notices: { id: string; text: s
   return (
     <div className="notices">
       {notices.map((n) => (
-        <Banner key={n.id} kind={n.kind}>
-          <span>{n.text}</span>
-          <button className="link" onClick={() => onDismiss(n.id)}>閉じる</button>
+        <Banner key={n.id} kind={n.kind} action={<button className="link banner__action" onClick={() => onDismiss(n.id)}>閉じる</button>}>
+          {n.text}
         </Banner>
       ))}
     </div>

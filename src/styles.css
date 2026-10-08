@@ -141,8 +141,8 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .notices { display: grid; gap: 8px; }
 .banner { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-sm); font-weight: 600; font-size: 0.95rem; }
 .banner__icon { display: grid; place-items: center; flex-shrink: 0; margin-top: 1px; }
-.banner__body { flex: 1; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; justify-content: space-between; }
-.banner__body .link { padding: 0; min-height: 0; }
+.banner__body { flex: 1; min-width: 0; }
+.banner__action { align-self: center; padding: 0 4px; min-height: 32px; flex-shrink: 0; }
 .banner--warn { background: var(--warn-soft); color: var(--warn-text); }
 .banner--error { background: var(--danger-soft); color: #8b1a1a; }
 .banner--ok { background: var(--ok-soft); color: #0f5132; }
@@ -466,4 +466,27 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- 残り数・割引・お釣りの内訳・履歴 ---------- */
+.queue { display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.95); color: var(--text); font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.queue b { font-size: 1rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 420px) { .queue { display: none; } }
+.menu-card__foot { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; width: 100%; padding-right: 0; }
+.menu-card.is-selected .menu-card__foot { padding-right: 46px; }
+.register-wide .menu-card.is-selected .menu-card__foot { padding-right: 0; }
+.menu-card__stock { padding: 0 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn-text); font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+.menu-card__stock.is-limit { background: var(--danger-soft); color: var(--danger); }
+.menu-card.is-discount .menu-card__price { color: var(--danger); font-weight: 600; }
+.breakdown { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; margin: -6px 2px 0; color: var(--muted); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.breakdown b { color: var(--text); margin-left: 1px; }
+.done .breakdown { justify-content: center; margin: -8px 0 0; font-size: 1.05rem; }
+.reason-chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
+.history-list { max-height: 60dvh; overflow: auto; margin: 8px 0 0; }
+.menu-row__stock { padding: 0 8px; border-radius: 999px; background: var(--subtle); color: var(--muted); font-size: 0.8rem; font-weight: 600; }
+.menu-row__stock.is-low { background: var(--warn-soft); color: var(--warn-text); }
+@media (max-width: 480px) { .menu-row__edit { display: none; } }
+@media (max-width: 480px) {
+  .appbar__btn { padding: 6px 10px; }
+  .appbar__shop { flex-shrink: 0; }
 }

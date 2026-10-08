@@ -272,11 +272,13 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const [editing, setEditing] = useState<MenuItem | "new" | null>(null);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [stock, setStock] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const open = (m: MenuItem | "new") => {
     setEditing(m);
     setName(m === "new" ? "" : m.name);
     setPrice(m === "new" ? "" : String(m.price));
+    setStock(m === "new" || m.stock == null ? "" : String(m.stock));
     setConfirmDelete(false);
   };
   const move = async (i: number, d: number) => {
@@ -297,7 +299,8 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
             <li key={m.id}>
               <button className="menu-row" onClick={() => open(m)}>
                 <span className="menu-row__name">{m.name}</span>
-                <span className="menu-row__price">{yen(m.price)}</span>
+                {m.stock != null && <span className={`menu-row__stock ${m.stock <= 10 ? "is-low" : ""}`}>残り{m.stock}</span>}
+                <span className="menu-row__price">{m.price < 0 ? `−${yen(-m.price)}` : yen(m.price)}</span>
                 <span className="menu-row__edit" aria-hidden>編集 ›</span>
               </button>
               <button
@@ -313,7 +316,7 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           ))}
         </ul>
         <Btn variant="accent" onClick={() => open("new")}>＋ 商品を追加</Btn>
-        <p className="hint">価格を変えても、すでに会計した注文の金額は変わりません。</p>
+        <p className="hint">商品を押すと、名前・価格・残り数・並び順を変えられます。価格を変えても、すでに会計した注文の金額は変わりません。セット割などの割引は、価格をマイナス（例: -100）にした商品として登録します。</p>
       </section>
 
       {editing && (
@@ -321,12 +324,17 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           <form onSubmit={async (e) => {
             e.preventDefault();
             const ok = editing === "new"
-              ? await mutate("/menu", "POST", { name, price: Number(price) }, `「${name}」を追加しました`)
-              : await mutate(`/menu/${editing.id}`, "PUT", { name, price: Number(price) }, `「${name}」を保存しました`);
+              ? await mutate("/menu", "POST", { name, price: Number(price), stock: stock === "" ? null : Number(stock) }, `「${name}」を追加しました`)
+              : await mutate(`/menu/${editing.id}`, "PUT", { name, price: Number(price), stock: stock === "" ? null : Number(stock) }, `「${name}」を保存しました`);
             if (ok) setEditing(null);
           }}>
             <label className="field">商品名<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 焼きそば" autoFocus /></label>
-            <label className="field">価格<span className="input-unit"><input className="input" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="400" />円</span></label>
+            <label className="field">価格<small className="muted">割引はマイナスで入力（例: -100）</small>
+              <span className="input-unit"><input className="input" inputMode="text" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d-]/g, "").replace(/(?!^)-/g, ""))} placeholder="400" />円</span>
+            </label>
+            <label className="field">残り数<small className="muted">用意した数を入れると、売れるたびに減り、0 で自動的に売り切れになります。数えないときは空欄</small>
+              <span className="input-unit"><input className="input" inputMode="numeric" value={stock} onChange={(e) => setStock(e.target.value.replace(/\D/g, ""))} placeholder="空欄" />個</span>
+            </label>
             {editing !== "new" && (
               <div className="row">
                 <Btn variant="ghost" onClick={() => void move(idx, -1)} disabled={idx <= 0}>↑ 上へ</Btn>
@@ -338,7 +346,7 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
               {editing !== "new" && confirmDelete && (
                 <Btn variant="danger" className="mr-auto" onClick={async () => { if (await mutate(`/menu/${editing.id}`, "DELETE", undefined, "削除しました")) setEditing(null); }}>本当に削除する</Btn>
               )}
-              <Btn type="submit" variant="accent" disabled={!name.trim() || price === ""}>保存</Btn>
+              <Btn type="submit" variant="accent" disabled={!name.trim() || price === "" || price === "-"}>保存</Btn>
             </div>
           </form>
         </Modal>

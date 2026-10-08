@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
+import { changeBreakdown, holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
+import { RegisterHistory } from "../components/RegisterHistory";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
 import { IconBack, IconBackspace, IconMinus, IconPlus } from "../components/icons";
 import type { CSSProperties } from "react";
@@ -9,6 +10,21 @@ import { buzz, load, save, uuid } from "../util";
 type CartLine = { itemId: string; qty: number };
 const LOW_TICKETS = 3;
 const QUICK = [1000, 5000, 10000];
+/** 残り数がこれ以下になったら、メニューに「残りN」と出す */
+const LOW_STOCK = 10;
+
+/** お釣りの渡し方（例: 500円×1・100円×1） */
+function Breakdown({ amount }: { amount: number }) {
+  const parts = changeBreakdown(amount);
+  if (parts.length === 0) return null;
+  return (
+    <p className="breakdown" aria-label="お釣りの内訳">
+      {parts.map(([d, n]) => (
+        <span key={d}>{d.toLocaleString()}円<b>×{n}</b></span>
+      ))}
+    </p>
+  );
+}
 
 export function Register({ shopId, code, onAuthError }: { shopId: string; code: string; onAuthError: () => void }) {
   const { conn, state } = useConnection(shopId, "register", code);
@@ -25,6 +41,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [pickTicket, setPickTicket] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [done, setDone] = useState<{ ticket: string; change: number } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (status === "auth") onAuthError();
@@ -48,7 +65,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const lines = cart
     .map((c) => {
       const m = menu.find((x) => x.id === c.itemId);
-      return m ? { ...c, name: m.name, price: m.price, soldOut: m.soldOut } : null;
+      return m ? { ...c, name: m.name, price: m.price, soldOut: m.soldOut, stock: m.stock } : null;
     })
     .filter((x): x is NonNullable<typeof x> => x != null && x.qty > 0);
   const total = linesTotal(lines);
@@ -57,6 +74,9 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const change = receivedNum - total;
   const itemCount = lines.reduce((s, l) => s + l.qty, 0);
   const qtyOf = (id: string) => cart.find((c) => c.itemId === id)?.qty ?? 0;
+  /** 残り数があるなら、それ以上は選べない */
+  const atLimit = (id: string, stock: number | null) => stock != null && qtyOf(id) >= stock;
+  const cookingCount = orders.filter((o) => o.status === "cooking").length;
 
   const add = (itemId: string, delta: number) => {
     buzz();
@@ -74,7 +94,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   };
 
   const ticketOk = ticket != null || ticketChoice === "none";
-  const canConfirm = lines.length > 0 && received !== "" && receivedNum >= total && ticketOk;
+  const canConfirm = lines.length > 0 && total >= 0 && received !== "" && receivedNum >= total && ticketOk;
 
   const confirm = () => {
     if (!canConfirm) return;
@@ -86,7 +106,29 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     reset();
   };
 
-  const appbar = <AppBar shop={shop} title="レジ" back="/" right={<ConnBadge status={status} pending={outbox.length} />} />;
+  const appbar = (
+    <AppBar
+      shop={shop}
+      title="レジ"
+      back="/"
+      right={
+        <>
+          {snapshot && <span className="queue" title="調理を待っている注文の数">調理中 <b>{cookingCount}</b></span>}
+          {snapshot && <button className="appbar__btn" onClick={() => setHistoryOpen(true)}>履歴</button>}
+          <ConnBadge status={status} pending={outbox.length} />
+        </>
+      }
+    />
+  );
+  const historyModal = historyOpen && (
+    <RegisterHistory
+      shopId={shopId}
+      code={code}
+      prefix={shop?.prefix ?? ""}
+      pending={orders.filter((o) => o.pending && o.seq < 0)}
+      onClose={() => setHistoryOpen(false)}
+    />
+  );
 
   if (!snapshot) {
     return (
@@ -108,11 +150,13 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
           <p className="done__lead">この札を渡してください</p>
           <div className="done__ticket">{done.ticket}</div>
           <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
+          <Breakdown amount={done.change} />
           {status !== "online" && (
             <Banner kind="warn">オフラインのため、まだ厨房に届いていません。口頭で伝えてください（電波が戻ると自動で送られます）。</Banner>
           )}
           <Btn variant="accent" big onClick={() => setDone(null)}>次のお客さん</Btn>
         </main>
+        {historyModal}
       </Page>
     );
   }
@@ -134,16 +178,22 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       {menu.length === 0 && <p className="hint">メニューがありません。管理画面で登録してください。</p>}
       {menu.map((m, i) => {
         const qty = qtyOf(m.id);
+        const limit = atLimit(m.id, m.stock);
+        const low = !m.soldOut && m.stock != null && m.stock <= LOW_STOCK;
+        const discount = m.price < 0;
         return (
-          <div key={m.id} className={`menu-card ${m.soldOut ? "is-soldout" : ""} ${qty ? "is-selected" : ""}`} style={{ "--i": i } as CSSProperties}>
+          <div key={m.id} className={`menu-card ${m.soldOut ? "is-soldout" : ""} ${qty ? "is-selected" : ""} ${discount ? "is-discount" : ""}`} style={{ "--i": i } as CSSProperties}>
             <button
               className="menu-card__main"
-              disabled={m.soldOut}
+              disabled={m.soldOut || limit}
               onClick={() => add(m.id, 1)}
-              aria-label={`${m.name} ${yen(m.price)}${m.soldOut ? " 売り切れ" : ""}${qty ? ` 現在${qty}個` : ""}`}
+              aria-label={`${m.name} ${yen(m.price)}${m.soldOut ? " 売り切れ" : ""}${low ? ` 残り${m.stock}` : ""}${qty ? ` 現在${qty}個` : ""}`}
             >
               <span className="menu-card__name">{m.name}</span>
-              <span className="menu-card__price">{m.soldOut ? "売り切れ" : yen(m.price)}</span>
+              <span className="menu-card__foot">
+                <span className="menu-card__price">{m.soldOut ? "売り切れ" : discount ? `−${yen(-m.price)}` : yen(m.price)}</span>
+                {low && <span className={`menu-card__stock ${limit ? "is-limit" : ""}`}>{limit ? "これ以上ありません" : `残り${m.stock}`}</span>}
+              </span>
             </button>
             {qty > 0 && (
               <>
@@ -167,6 +217,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         <span>{received && shortBy > 0 ? "たりません" : "お釣り"}</span>
         {!received ? <b className="pay__dash">—</b> : <Money value={shortBy > 0 ? shortBy : change} />}
       </div>
+      {received !== "" && shortBy <= 0 && <Breakdown amount={change} />}
       <div className="quick" role="group" aria-label="お預かり金額">
         <button className={`chip ${received !== "" && receivedNum === total ? "is-on" : ""}`} onClick={() => { buzz(); setReceived(String(total)); setKeypad(false); }} disabled={total === 0}>ちょうど</button>
         {QUICK.map((v) => (
@@ -188,7 +239,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         <button className="link" onClick={() => setPickTicket(true)}>変更</button>
       </div>
       <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
-        {lines.length === 0 ? "商品を選んでください" : received === "" ? "お預かり金額を選んでください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : !ticketOk ? "札を選んでください" : "会計を確定"}
+        {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : received === "" ? "お預かり金額を選んでください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : !ticketOk ? "札を選んでください" : "会計を確定"}
       </Btn>
     </section>
   );
@@ -252,9 +303,9 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
                       <span className="stepper">
                         <button onClick={() => add(l.itemId, -1)} aria-label={`${l.name}を1つ減らす`}><IconMinus size={18} /></button>
                         <b>{l.qty}</b>
-                        <button onClick={() => add(l.itemId, 1)} disabled={l.soldOut} aria-label={`${l.name}を1つ増やす`}><IconPlus size={18} /></button>
+                        <button onClick={() => add(l.itemId, 1)} disabled={l.soldOut || atLimit(l.itemId, l.stock)} aria-label={`${l.name}を1つ増やす`}><IconPlus size={18} /></button>
                       </span>
-                      <span className="order-list__sub">{yen(l.price * l.qty)}</span>
+                      <span className="order-list__sub">{l.price < 0 ? `−${yen(-l.price * l.qty)}` : yen(l.price * l.qty)}</span>
                     </li>
                   ))}
                 </ul>
@@ -265,6 +316,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         </main>
         {ticketModal}
         {clearModal}
+        {historyModal}
       </Page>
     );
   }
@@ -294,6 +346,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       )}
       {ticketModal}
       {clearModal}
+      {historyModal}
     </Page>
   );
 }

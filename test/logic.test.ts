@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDay, buildLines, halfHourSlot, nextFreeTicket, ordersCsv, summarize, ticketLabel, holdsTicket } from "../shared/logic";
+import { businessDay, buildLines, changeBreakdown, halfHourSlot, nextFreeTicket, ordersCsv, summarize, ticketLabel, holdsTicket } from "../shared/logic";
 import type { Order } from "../shared/types";
 
 const order = (p: Partial<Order>): Order => ({
@@ -38,7 +38,7 @@ describe("番号札", () => {
 
 describe("明細", () => {
   it("確定時点の名前と単価を保存し、不正な行を除く", () => {
-    const menu = [{ id: "a", name: "焼きそば", price: 400, soldOut: false, sort: 0 }];
+    const menu = [{ id: "a", name: "焼きそば", price: 400, soldOut: false, sort: 0, stock: null }];
     expect(buildLines(menu, [{ itemId: "a", qty: 2 }, { itemId: "z", qty: 1 }, { itemId: "a", qty: 0 }])).toEqual([
       { itemId: "a", name: "焼きそば", price: 400, qty: 2 },
     ]);
@@ -67,5 +67,13 @@ describe("売上集計", () => {
     const csv = ordersCsv(orders.slice(0, 2), "A");
     expect(csv.startsWith("﻿注文番号")).toBe(true);
     expect(csv.trim().split("\r\n")).toHaveLength(3);
+  });
+});
+
+describe("お釣りの内訳", () => {
+  it("大きいお金から", () => {
+    expect(changeBreakdown(650)).toEqual([[500, 1], [100, 1], [50, 1]]);
+    expect(changeBreakdown(9350)).toEqual([[5000, 1], [1000, 4], [100, 3], [50, 1]]);
+    expect(changeBreakdown(0)).toEqual([]);
   });
 });

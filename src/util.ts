@@ -78,3 +78,25 @@ export async function api<T>(path: string, code: string | null, init: RequestIni
   }
   return (await res.json()) as T;
 }
+
+/** 短い「ピンポン」音。ブラウザの制限で、画面を一度押した後でないと鳴らないことがある */
+export function chime() {
+  try {
+    const ctx = new AudioContext();
+    [880, 1175].forEach((f, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = f;
+      o.connect(g).connect(ctx.destination);
+      const t = ctx.currentTime + i * 0.25;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      o.start(t);
+      o.stop(t + 0.55);
+    });
+    setTimeout(() => void ctx.close(), 1500);
+  } catch {
+    // 音が出せない環境
+  }
+}

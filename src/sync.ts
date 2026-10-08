@@ -236,10 +236,20 @@ export function viewOrders(snapshot: ShopSnapshot | null, outbox: Pending[]): (O
 export function viewMenu(snapshot: ShopSnapshot | null, outbox: Pending[]) {
   if (!snapshot) return [];
   const menu = snapshot.menu.map((m) => ({ ...m }));
+  const known = new Set(snapshot.orders.map((o) => o.id));
   for (const { op } of outbox) {
     if (op.kind === "setSoldOut") {
       const m = menu.find((x) => x.id === op.itemId);
       if (m) m.soldOut = op.soldOut;
+    } else if (op.kind === "createOrder" && !known.has(op.order.id)) {
+      // 送信待ちの注文の分だけ残り数を減らして見せる
+      for (const l of op.order.lines) {
+        const m = menu.find((x) => x.id === l.itemId);
+        if (m && m.stock != null) {
+          m.stock = Math.max(0, m.stock - l.qty);
+          if (m.stock === 0) m.soldOut = true;
+        }
+      }
     }
   }
   return menu;

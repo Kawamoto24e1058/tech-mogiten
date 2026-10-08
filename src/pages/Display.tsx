@@ -1,30 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useConnection } from "../sync";
+import { chime } from "../util";
 import { accentStyle, useNow, useWakeLock } from "../components/ui";
 import { IconBell, IconBellOff } from "../components/icons";
 
 const LONG_WAIT_MS = 5 * 60 * 1000;
-
-function chime() {
-  try {
-    const ctx = new AudioContext();
-    [880, 1175].forEach((f, i) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.frequency.value = f;
-      o.connect(g).connect(ctx.destination);
-      const t = ctx.currentTime + i * 0.25;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
-      o.start(t);
-      o.stop(t + 0.55);
-    });
-    setTimeout(() => void ctx.close(), 1500);
-  } catch {
-    // 音が出せない環境
-  }
-}
 
 export function Display({ shopId }: { shopId: string }) {
   const { state } = useConnection(shopId, "display", null);

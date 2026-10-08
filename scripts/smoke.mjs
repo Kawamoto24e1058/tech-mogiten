@@ -116,6 +116,38 @@ const master = await req(`/api/master/summary`, { code: MASTER });
 check(master.status === 200 && master.data.length === 2 && master.data[0].summary.sales === 950 && master.data[1].summary.sales === 0, "全体の売上で2店舗を別々に集計");
 check((await req(`/api/master/summary`, { code: "1234" })).status === 401, "店舗の管理PINでは全体の売上を見られない");
 
+// ---- 残り数・割引・レジからの取り消し ----
+st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "限定品", price: 200, stock: 2 } })).data;
+const limited = st.menu.find((x) => x.name === "限定品");
+check(limited.stock === 2, "残り数を設定して商品を登録");
+const lim1 = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: limited.id, qty: 2 }], received: 400, createdAt: Date.now() };
+reg.ws.send(JSON.stringify({ type: "op", opId: "s1", op: { kind: "createOrder", order: lim1 } }));
+await reg.until((m) => m.type === "ack" && m.opId === "s1");
+let lim = (await req(`${A}/admin/state`, { code: "1234" })).data.menu.find((x) => x.id === limited.id);
+check(lim.stock === 0 && lim.soldOut, "残り数が0になると自動で売り切れ");
+const hist = (await req(`${A}/history`, { code: "yakisoba" })).data;
+check(hist.orders[0].id === lim1.id, "レジの履歴に直前の会計が出る（合言葉で見られる）");
+check((await req(`${A}/history/${lim1.id}/cancel`, { code: "yakisoba", method: "POST", body: { reason: "入力ミス" } })).status === 200, "会計から5分以内ならレジ（合言葉）で取り消せる");
+lim = (await req(`${A}/admin/state`, { code: "1234" })).data.menu.find((x) => x.id === limited.id);
+check(lim.stock === 2 && !lim.soldOut, "取り消すと残り数が戻り、販売が再開する");
+const old = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: yakisoba.id, qty: 1 }], received: 500, createdAt: Date.now() - 6 * 60 * 1000 };
+reg.ws.send(JSON.stringify({ type: "op", opId: "o1", op: { kind: "createOrder", order: old } }));
+await reg.until((m) => m.type === "ack" && m.opId === "o1");
+check((await req(`${A}/history/${old.id}/cancel`, { code: "yakisoba", method: "POST", body: { reason: "入力ミス" } })).status === 403, "会計から5分以上たつと、レジ（合言葉）では取り消せない");
+const adminCancel = await req(`${A}/history/${old.id}/cancel`, { code: "1234", method: "POST", body: { reason: "入力ミス" } });
+check(adminCancel.status === 200, `管理PINなら5分以上たっていても取り消せる (${adminCancel.status} ${JSON.stringify(adminCancel.data)})`);
+st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "セット割", price: -100 } })).data;
+const disc = st.menu.find((x) => x.name === "セット割");
+check(disc.price === -100, "割引（マイナスの価格）を登録できる");
+const neg = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: disc.id, qty: 1 }], received: 0, createdAt: Date.now() };
+reg.ws.send(JSON.stringify({ type: "op", opId: "n1", op: { kind: "createOrder", order: neg } }));
+check(!(await reg.until((m) => m.type === "ack" && m.opId === "n1")).ok, "合計がマイナスになる会計は拒否");
+const withDisc = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: yakisoba.id, qty: 1 }, { itemId: disc.id, qty: 1 }], received: 400, createdAt: Date.now() };
+reg.ws.send(JSON.stringify({ type: "op", opId: "n2", op: { kind: "createOrder", order: withDisc } }));
+await reg.until((m) => m.type === "ack" && m.opId === "n2");
+const wd = (await req(`${A}/history`, { code: "yakisoba" })).data.orders.find((x) => x.id === withDisc.id);
+check(wd.total === 400 && wd.change === 0, "割引込みの合計（500 − 100 = 400円）");
+
 [reg, kit, disp].forEach((s) => s.ws.close());
 console.log(failed ? `\n${failed}件 失敗` : "\nすべて成功");
 process.exit(failed ? 1 : 0);
