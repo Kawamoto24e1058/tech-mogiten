@@ -5,7 +5,7 @@ import { AppBar, Banner, Money, Page, accentStyle } from "../components/ui";
 import { ItemRanking } from "../components/Summary";
 import { api, ApiError, todayJst } from "../util";
 
-const CLUB = { name: "テック部", color: "#17140f", prefix: "T" };
+const CLUB = { name: "テック部", color: "#374151", prefix: "T" };
 
 export function MasterAdmin({ code, onAuthError }: { code: string; onAuthError: () => void }) {
   const [day, setDay] = useState(todayJst());

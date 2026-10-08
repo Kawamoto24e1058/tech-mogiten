@@ -106,10 +106,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         {appbar}
         <main className="done">
           <p className="done__lead">この札を渡してください</p>
-          <div className="done__ticket">
-            <span className="done__ticket-num">{done.ticket}</span>
-            <span className="stamp done__stamp">会計済</span>
-          </div>
+          <div className="done__ticket">{done.ticket}</div>
           <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
           {status !== "online" && (
             <Banner kind="warn">オフラインのため、まだ厨房に届いていません。口頭で伝えてください（電波が戻ると自動で送られます）。</Banner>

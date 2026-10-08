@@ -20,12 +20,12 @@ export function readableOn(hex: string): string {
 }
 
 export function accentStyle(color: string | undefined): CSSProperties {
-  const c = color ?? "#17140f";
+  const c = color ?? "#374151";
   // color-mix() を使う派生色は、--accent を変えた要素で定義し直さないと親の色のままになるため、ここでまとめて渡す
   return {
     "--accent": c,
     "--on-accent": readableOn(c),
-    "--accent-soft": `color-mix(in srgb, ${c} 14%, #fbf6ea)`,
+    "--accent-soft": `color-mix(in srgb, ${c} 8%, white)`,
     "--accent-ring": `color-mix(in srgb, ${c} 35%, transparent)`,
   } as CSSProperties;
 }

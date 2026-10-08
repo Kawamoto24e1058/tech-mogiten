@@ -69,7 +69,7 @@ function MasterScreen() {
     return (
       <CodeGate
         shopId={shops[0]?.id ?? "a"}
-        shop={{ name: "テック部", color: "#17140f", prefix: "T" }}
+        shop={{ name: "テック部", color: "#374151", prefix: "T" }}
         title="全体の売上"
         label="テック部の全体PIN"
         devHint="全体PINは 0000"

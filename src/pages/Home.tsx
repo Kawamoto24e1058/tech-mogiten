@@ -4,10 +4,10 @@ import { accentStyle } from "../components/ui";
 import { api, load, save } from "../util";
 
 const SCREENS: { path: string; label: string; desc: string }[] = [
-  { path: "register", label: "レジ", desc: "注文を受けて会計する" },
-  { path: "kitchen", label: "厨房", desc: "作って、渡す" },
-  { path: "display", label: "呼出", desc: "店先のモニターに出す" },
-  { path: "admin", label: "管理", desc: "売上・メニュー・締め" },
+  { path: "register", label: "レジ", desc: "注文と会計" },
+  { path: "kitchen", label: "厨房", desc: "作る・渡す" },
+  { path: "display", label: "呼出", desc: "店先のモニター" },
+  { path: "admin", label: "管理", desc: "売上・メニュー" },
 ];
 
 export function Home() {
@@ -22,8 +22,8 @@ export function Home() {
     <div className="page home-page">
       <main className="home">
         <header className="home__head">
-          <p className="home__eyebrow">テック部 ／ 文化祭</p>
-          <h1 className="home__title">模擬店<br />レジ</h1>
+          <p className="home__eyebrow">テック部 文化祭</p>
+          <h1 className="home__title">模擬店レジ</h1>
           <p className="home__lead">使うお店と画面を選んでください</p>
         </header>
         {error && shops.length === 0 && <p className="error">{error}</p>}
@@ -34,7 +34,6 @@ export function Home() {
               {SCREENS.map((sc, i) => (
                 <li key={sc.path} style={{ "--i": i } as CSSProperties}>
                   <a className="tile" href={`/${s.id}/${sc.path}`}>
-                    <span className="tile__no" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
                     <b>{sc.label}</b>
                     <span>{sc.desc}</span>
                   </a>
