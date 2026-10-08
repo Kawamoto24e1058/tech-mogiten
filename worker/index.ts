@@ -9,6 +9,8 @@ export interface Env {
   MASTER_PIN?: string;
   /** "1" のとき、未設定の店舗にデモ用のメニューと合言葉を入れる（ローカル開発用） */
   DEV_SEED?: string;
+  /** "1" のとき、レジ・厨房の合言葉と管理PINを求める。それ以外（既定）は誰でも使える */
+  REQUIRE_AUTH?: string;
 }
 
 function json(data: unknown, status = 200): Response {
@@ -53,7 +55,7 @@ export default {
 
     if (url.pathname === "/api/master/summary" && req.method === "GET") {
       const given = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-      if (!env.MASTER_PIN || given !== env.MASTER_PIN) return json({ error: "テック部の全体PINが違います" }, 401);
+      if (env.REQUIRE_AUTH === "1" && (!env.MASTER_PIN || given !== env.MASTER_PIN)) return json({ error: "テック部の全体PINが違います" }, 401);
       const day = url.searchParams.get("day") ?? "";
       const results = await Promise.all(
         ids.map(async (id) => {

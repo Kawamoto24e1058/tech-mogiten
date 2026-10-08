@@ -32,17 +32,29 @@ function socket(shop, screen, code) {
   return { ws, msgs, until, opened };
 }
 
+// 合言葉・PIN を使う設定（REQUIRE_AUTH=1）かどうかで、確かめる内容を変える
+const AUTH = (await req("/api/shops")).data[0].authRequired;
+console.log(AUTH ? "合言葉・PIN あり の設定で確認します" : "合言葉・PIN なし（既定）の設定で確認します");
+async function authCheck(fn, msg) {
+  if (!AUTH) { console.log(`SKIP ${msg}（合言葉・PIN なしの設定）`); return; }
+  check(await fn(), msg);
+}
+
 const A = "/api/shops/a";
 const B = "/api/shops/b";
 
-check((await req(`${A}/admin/state`)).status === 401, "認証なしでは管理APIを使えない");
+await authCheck(async () => (await req(`${A}/admin/state`)).status === 401, "認証なしでは管理APIを使えない");
 check((await req(`${A}/codes`.replace("/codes", "/admin/codes"), { code: MASTER, method: "PUT", body: { staffCode: "yakisoba", adminPin: "1234" } })).status === 200, "全体PINでA店の合言葉と管理PINを設定");
 await req(`${B}/admin/codes`, { code: MASTER, method: "PUT", body: { staffCode: "crepe", adminPin: "5678" } });
-check((await req(`${A}/auth`, { method: "POST", body: { code: "yakisoba" } })).data.role === "staff", "合言葉でスタッフとして認証");
-check((await req(`${B}/admin/state`, { code: "1234" })).status === 401, "A店の管理PINではB店を管理できない");
-check((await req(`${A}/admin/state`, { code: "yakisoba" })).status === 403, "合言葉だけでは管理画面を使えない");
+await authCheck(async () => (await req(`${A}/auth`, { method: "POST", body: { code: "yakisoba" } })).data.role === "staff", "合言葉でスタッフとして認証");
+await authCheck(async () => (await req(`${B}/admin/state`, { code: "1234" })).status === 401, "A店の管理PINではB店を管理できない");
+await authCheck(async () => (await req(`${A}/admin/state`, { code: "yakisoba" })).status === 403, "合言葉だけでは管理画面を使えない");
 
 const before = (await req(`${A}/admin/state`, { code: "1234" })).data.menu.length;
+if (!AUTH) {
+  check((await req(`${A}/admin/state`)).status === 200, "合言葉・PIN なしで管理画面を使える");
+  check((await req(`/api/master/summary`)).status === 200, "合言葉・PIN なしで全体の売上を見られる");
+}
 let st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "テスト焼きそば", price: 400 } })).data;
 st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "テストジュース", price: 150 } })).data;
 check(st.menu.length === before + 2, "メニューを2件登録");
@@ -59,7 +71,7 @@ check((await disp.until((m) => m.type === "display")).data.ready.length === 0, "
 
 const bad = socket("a", "register", "wrong");
 const badOpened = await bad.opened.then(() => true, () => false);
-check(!badOpened, "合言葉が違うとWebSocketに接続できない");
+await authCheck(async () => !badOpened, "合言葉が違うとWebSocketに接続できない");
 
 const order1 = { id: crypto.randomUUID(), ticket: 1, lines: [{ itemId: yakisoba.id, qty: 2 }, { itemId: juice.id, qty: 1 }], received: 1000, createdAt: Date.now() };
 reg.ws.send(JSON.stringify({ type: "op", opId: "op1", op: { kind: "createOrder", order: order1 } }));
@@ -114,7 +126,7 @@ check(csvBytes[0] === 0xef && csvBytes[1] === 0xbb && csvBytes[2] === 0xbf && cs
 
 const master = await req(`/api/master/summary`, { code: MASTER });
 check(master.status === 200 && master.data.length === 2 && master.data[0].summary.sales === 950 && master.data[1].summary.sales === 0, "全体の売上で2店舗を別々に集計");
-check((await req(`/api/master/summary`, { code: "1234" })).status === 401, "店舗の管理PINでは全体の売上を見られない");
+await authCheck(async () => (await req(`/api/master/summary`, { code: "1234" })).status === 401, "店舗の管理PINでは全体の売上を見られない");
 
 // ---- 残り数・割引・レジからの取り消し ----
 st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "限定品", price: 200, stock: 2 } })).data;
@@ -133,7 +145,7 @@ check(lim.stock === 2 && !lim.soldOut, "取り消すと残り数が戻り、販�
 const old = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: yakisoba.id, qty: 1 }], received: 500, createdAt: Date.now() - 6 * 60 * 1000 };
 reg.ws.send(JSON.stringify({ type: "op", opId: "o1", op: { kind: "createOrder", order: old } }));
 await reg.until((m) => m.type === "ack" && m.opId === "o1");
-check((await req(`${A}/history/${old.id}/cancel`, { code: "yakisoba", method: "POST", body: { reason: "入力ミス" } })).status === 403, "会計から5分以上たつと、レジ（合言葉）では取り消せない");
+await authCheck(async () => (await req(`${A}/history/${old.id}/cancel`, { code: "yakisoba", method: "POST", body: { reason: "入力ミス" } })).status === 403, "会計から5分以上たつと、レジ（合言葉）では取り消せない");
 const adminCancel = await req(`${A}/history/${old.id}/cancel`, { code: "1234", method: "POST", body: { reason: "入力ミス" } });
 check(adminCancel.status === 200, `管理PINなら5分以上たっていても取り消せる (${adminCancel.status} ${JSON.stringify(adminCancel.data)})`);
 st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "セット割", price: -100 } })).data;
@@ -159,11 +171,11 @@ const sold = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: limited.
 reg.ws.send(JSON.stringify({ type: "op", opId: "r2", op: { kind: "createOrder", order: sold } }));
 await reg.until((m) => m.type === "ack" && m.opId === "r2");
 check((await req(`${A}/admin/reset`, { code: "1234", method: "POST", body: { confirm: "けす" } })).status === 400, "練習データの消去は「消去」と入力しないとできない");
-check((await req(`${A}/admin/reset`, { code: "yakisoba", method: "POST", body: { confirm: "消去" } })).status === 403, "練習データの消去は合言葉ではできない");
+await authCheck(async () => (await req(`${A}/admin/reset`, { code: "yakisoba", method: "POST", body: { confirm: "消去" } })).status === 403, "練習データの消去は合言葉ではできない");
 st = (await req(`${A}/admin/reset`, { code: "1234", method: "POST", body: { confirm: "消去" } })).data;
 check(st.orders.length === 0 && st.days.length === 0, "練習データを消すと注文がなくなる");
 check(st.menu.find((x) => x.id === limited.id).stock === 2, "練習で売れた分の残り数が戻る");
-check(st.menu.length > 0 && (await req(`${A}/auth`, { method: "POST", body: { code: "yakisoba" } })).data.role === "staff", "メニューと合言葉は残る");
+check(st.menu.length > 0 && (!AUTH || (await req(`${A}/auth`, { method: "POST", body: { code: "yakisoba" } })).data.role === "staff"), "メニュー（と合言葉）は残る");
 check((await req(`/api/master/summary`, { code: MASTER })).data[0].summary.sales === 0, "全体の売上からも消える");
 
 [reg, kit, disp].forEach((s) => s.ws.close());

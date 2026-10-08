@@ -10,13 +10,13 @@ import { DENOMINATIONS, STAFF_CANCEL_WINDOW_MS } from "../shared/types";
 import type { Env } from "./index";
 
 const DEFAULT_SHOPS: Record<string, { name: string; color: string; prefix: string }> = {
-  a: { name: "A店", color: "#1565c0", prefix: "A" },
-  b: { name: "B店", color: "#c2410c", prefix: "B" },
+  a: { name: "焼き鳥", color: "#1565c0", prefix: "A" },
+  b: { name: "とうもろこし", color: "#c2410c", prefix: "B" },
 };
 // [商品名, 価格, 残り数（null なら数えない）]
 const DEMO_MENUS: Record<string, [string, number, number | null][]> = {
-  a: [["焼きそば", 400, null], ["焼きそば 大盛り", 500, 20], ["フランクフルト", 300, null], ["ラムネ", 150, null], ["セット割", -100, null]],
-  b: [["チョコバナナクレープ", 350, null], ["いちごクレープ", 400, 15], ["タピオカミルクティー", 300, null], ["ホットコーヒー", 150, null]],
+  a: [["ねぎま", 150, null], ["もも", 150, null], ["つくね", 150, 30], ["皮", 150, null], ["3本セット割", -50, null]],
+  b: [["焼きとうもろこし", 300, 40], ["バター醤油", 350, null], ["ハーフ", 200, null]],
 };
 /** 渡した後も厨房画面に残す時間（取り消し用） */
 const RECENT_HANDED_MS = 10 * 60 * 1000;
@@ -141,6 +141,7 @@ export class ShopDO extends DurableObject<Env> {
       prefix: this.get("prefix") ?? "",
       ticketCount: Number(this.get("ticketCount") ?? 30),
       configured: this.get("staffHash") != null,
+      authRequired: this.authRequired,
     };
   }
 
@@ -155,8 +156,14 @@ export class ShopDO extends DurableObject<Env> {
     return null;
   }
 
+  private get authRequired() {
+    return this.env.REQUIRE_AUTH === "1";
+  }
+
   private async authorize(req: Request, min: Role, code?: string | null): Promise<Role> {
     if (min === "display") return "display";
+    // 合言葉・PIN を使わない設定（既定）では、誰でもすべての操作ができる
+    if (!this.authRequired) return "master";
     const now = Date.now();
     this.sql.exec("DELETE FROM auth_fail WHERE at < ?", now - AUTH_FAIL_WINDOW_MS);
     const fails = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM auth_fail").one().n;

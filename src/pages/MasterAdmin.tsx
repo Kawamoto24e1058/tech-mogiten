@@ -60,7 +60,7 @@ export function MasterAdmin({ code, onAuthError }: { code: string; onAuthError: 
                       <div><span>売上</span><Money value={summary.sales} /></div>
                       <div><span>注文</span><span className="money"><span className="money__num">{summary.orderCount}</span><span className="money__unit">件</span></span></div>
                     </div>
-                    {!shop.configured && <Banner kind="warn">合言葉が未設定です</Banner>}
+                    {shop.authRequired && !shop.configured && <Banner kind="warn">合言葉が未設定です</Banner>}
                     <ItemRanking s={summary} limit={3} />
                     <p className={`closing-state ${c ? (c.expected !== summary.expectedCash ? "is-warn" : c.diff === 0 ? "is-ok" : "is-warn") : ""}`}>
                       {!c ? "レジ締め：まだ" : c.expected !== summary.expectedCash ? "レジ締め：締めた後に売上が変わっています" : c.diff === 0 ? "✓ レジ締め済み（差額なし）" : `レジ締め済み（差額 ${yen(c.diff)}）`}

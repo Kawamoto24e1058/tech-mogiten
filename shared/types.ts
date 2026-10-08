@@ -42,6 +42,8 @@ export interface ShopPublic {
   prefix: string;
   ticketCount: number;
   configured: boolean;
+  /** 合言葉・PIN を使うか（環境変数 REQUIRE_AUTH=1 のときだけ） */
+  authRequired: boolean;
 }
 
 /** 店舗の現在の状態。変更があるたびにサーバーから全員に配信される。 */

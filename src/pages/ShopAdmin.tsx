@@ -439,6 +439,7 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         <p className="hint">札は「{ticketLabel(prefix, 5)}」のように表示されます。</p>
         <Btn type="submit" variant="accent">保存</Btn>
       </form>
+      {st.shop.authRequired && (
       <form className="panel" onSubmit={async (e) => {
         e.preventDefault();
         const body: Record<string, string> = {};
@@ -456,6 +457,7 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         </label>
         <Btn type="submit" variant="accent" disabled={!staffCode && !adminPin}>変更する</Btn>
       </form>
+      )}
       <PrepPanel st={st} mutate={mutate} />
     </>
   );
