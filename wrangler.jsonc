@@ -4,6 +4,9 @@
   "main": "worker/index.ts",
   "compatibility_date": "2025-09-01",
   "assets": {
+    // npm run build で作られる画面のファイル。ビルド後の設定を経由しない
+    // 「npx wrangler deploy」単体でも公開できるように明記しておく
+    "directory": "./dist/client",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
