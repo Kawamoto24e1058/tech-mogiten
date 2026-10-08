@@ -617,6 +617,34 @@ export class ShopDO extends DurableObject<Env> {
       this.broadcast();
       return json(this.adminState(day));
     }
+    // 開店前に、前日の渡し忘れなどで使用中のままの札をまとめて空きに戻す
+    if (p === "/tickets/release-all" && m === "POST") {
+      const holders = this.activeOrders().filter(holdsTicket);
+      for (const o of holders) this.sql.exec("UPDATE orders SET ticket_released = 1 WHERE id = ?", o.id);
+      this.audit("ticket.release-all", null, { count: holders.length, orders: holders.map((o) => o.seq) });
+      this.broadcast();
+      return json(this.adminState(day));
+    }
+    // リハーサルの注文を消す。メニュー・設定・合言葉は残す。残り数は練習で売れた分を戻す
+    if (p === "/reset" && m === "POST") {
+      const { confirm } = await this.body<{ confirm: string }>(req);
+      if (confirm !== "消去") throw new HttpError(400, "確認のため「消去」と入力してください");
+      const sold = this.sql
+        .exec<{ lines: string }>("SELECT lines FROM orders WHERE status != 'cancelled'")
+        .toArray()
+        .flatMap((r) => JSON.parse(r.lines) as { itemId: string; qty: number }[]);
+      for (const l of sold) {
+        this.sql.exec("UPDATE menu SET stock = stock + ?, sold_out = CASE WHEN stock = 0 THEN 0 ELSE sold_out END WHERE id = ? AND stock IS NOT NULL", l.qty, l.itemId);
+      }
+      const n = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM orders").one().n;
+      this.sql.exec("DELETE FROM orders");
+      this.sql.exec("DELETE FROM closings");
+      this.sql.exec("DELETE FROM audit");
+      this.sql.exec("DELETE FROM kv WHERE key LIKE 'float:%'");
+      this.audit("reset", null, { orders: n, by: role });
+      this.broadcast();
+      return json(this.adminState(today));
+    }
 
     if (p === "/summary" && m === "GET") return json(this.daySummary(day));
     if (p === "/float" && m === "PUT") {

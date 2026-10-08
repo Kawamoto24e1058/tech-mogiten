@@ -22,7 +22,7 @@ const STATUS_JA: Record<string, string> = { cooking: "調理中", ready: "でき
 const ACTION_JA: Record<string, string> = {
   cancel: "キャンセル", "ticket.change": "札の変更", "ticket.release": "札を空きに戻す", "menu.add": "メニュー追加",
   "menu.edit": "メニュー変更", "menu.delete": "メニュー削除", settings: "店舗設定の変更", codes: "合言葉・PINの変更",
-  float: "釣り銭準備金", closing: "レジ締め",
+  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", reset: "練習データの消去",
 };
 
 type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;
@@ -456,6 +456,57 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         </label>
         <Btn type="submit" variant="accent" disabled={!staffCode && !adminPin}>変更する</Btn>
       </form>
+      <PrepPanel st={st} mutate={mutate} />
     </>
+  );
+}
+
+/** 開店前の準備（札の一括返却・練習データの消去） */
+function PrepPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+  const [dialog, setDialog] = useState<"tickets" | "reset" | null>(null);
+  const [confirm, setConfirm] = useState("");
+  const used = st.tickets.length;
+  return (
+    <section className="panel">
+      <h3 className="panel__title">営業の準備</h3>
+      <div className="prep-row">
+        <div>
+          <b>札をすべて空きに戻す</b>
+          <p className="hint">開店前に使います。前日に渡し忘れた札などを、まとめて空きにします。いま使用中: {used}枚</p>
+        </div>
+        <Btn onClick={() => setDialog("tickets")} disabled={used === 0}>空きに戻す</Btn>
+      </div>
+      <div className="prep-row">
+        <div>
+          <b>練習データを消す</b>
+          <p className="hint">リハーサルの注文・レジ締め・履歴をすべて消します。メニュー・価格・合言葉・店舗の設定は残ります。本番の前に1回だけ使ってください。</p>
+        </div>
+        <Btn variant="danger" onClick={() => { setConfirm(""); setDialog("reset"); }}>消去する</Btn>
+      </div>
+
+      {dialog === "tickets" && (
+        <Modal title="札をすべて空きに戻しますか？" onClose={() => setDialog(null)}>
+          <p>使用中の札 {used}枚 を空きにします。注文そのものは消えません。</p>
+          <Banner kind="warn">営業中に使うと、まだ受け取っていないお客さんの札番号が、次のお客さんにも割り当てられてしまいます。</Banner>
+          <div className="modal__actions">
+            <Btn variant="ghost" onClick={() => setDialog(null)}>やめる</Btn>
+            <Btn variant="danger" onClick={async () => { if (await mutate("/tickets/release-all", "POST", {}, "札をすべて空きに戻しました")) setDialog(null); }}>空きに戻す</Btn>
+          </div>
+        </Modal>
+      )}
+      {dialog === "reset" && (
+        <Modal title="練習データを消しますか？" onClose={() => setDialog(null)}>
+          <Banner kind="error">すべての日の注文・売上・レジ締め・変更履歴が消え、元に戻せません。必要ならCSVを先に書き出してください。</Banner>
+          <p className="hint">残り数を設定している商品は、練習で売れた分が戻ります。</p>
+          <label className="field">確認のため「消去」と入力してください
+            <input className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+          </label>
+          <div className="modal__actions">
+            <Btn variant="ghost" onClick={() => setDialog(null)}>やめる</Btn>
+            <Btn variant="danger" disabled={confirm !== "消去"} onClick={async () => { if (await mutate("/reset", "POST", { confirm }, "練習データを消しました")) setDialog(null); }}>消去する</Btn>
+          </div>
+        </Modal>
+      )}
+    </section>
   );
 }

@@ -148,6 +148,24 @@ await reg.until((m) => m.type === "ack" && m.opId === "n2");
 const wd = (await req(`${A}/history`, { code: "yakisoba" })).data.orders.find((x) => x.id === withDisc.id);
 check(wd.total === 400 && wd.change === 0, "割引込みの合計（500 − 100 = 400円）");
 
+// ---- 開店前の準備 ----
+const t1 = { id: crypto.randomUUID(), ticket: 2, lines: [{ itemId: yakisoba.id, qty: 1 }], received: 500, createdAt: Date.now() };
+reg.ws.send(JSON.stringify({ type: "op", opId: "r1", op: { kind: "createOrder", order: t1 } }));
+await reg.until((m) => m.type === "ack" && m.opId === "r1");
+check((await req(`${A}/admin/state`, { code: "1234" })).data.tickets.length > 0, "（準備）使用中の札がある");
+st = (await req(`${A}/admin/tickets/release-all`, { code: "1234", method: "POST", body: {} })).data;
+check(st.tickets.length === 0, "札をすべて空きに戻せる");
+const sold = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: limited.id, qty: 1 }], received: 200, createdAt: Date.now() };
+reg.ws.send(JSON.stringify({ type: "op", opId: "r2", op: { kind: "createOrder", order: sold } }));
+await reg.until((m) => m.type === "ack" && m.opId === "r2");
+check((await req(`${A}/admin/reset`, { code: "1234", method: "POST", body: { confirm: "けす" } })).status === 400, "練習データの消去は「消去」と入力しないとできない");
+check((await req(`${A}/admin/reset`, { code: "yakisoba", method: "POST", body: { confirm: "消去" } })).status === 403, "練習データの消去は合言葉ではできない");
+st = (await req(`${A}/admin/reset`, { code: "1234", method: "POST", body: { confirm: "消去" } })).data;
+check(st.orders.length === 0 && st.days.length === 0, "練習データを消すと注文がなくなる");
+check(st.menu.find((x) => x.id === limited.id).stock === 2, "練習で売れた分の残り数が戻る");
+check(st.menu.length > 0 && (await req(`${A}/auth`, { method: "POST", body: { code: "yakisoba" } })).data.role === "staff", "メニューと合言葉は残る");
+check((await req(`/api/master/summary`, { code: MASTER })).data[0].summary.sales === 0, "全体の売上からも消える");
+
 [reg, kit, disp].forEach((s) => s.ws.close());
 console.log(failed ? `\n${failed}件 失敗` : "\nすべて成功");
 process.exit(failed ? 1 : 0);

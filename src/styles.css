@@ -490,3 +490,6 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
   .appbar__btn { padding: 6px 10px; }
   .appbar__shop { flex-shrink: 0; }
 }
+.prep-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--divider); }
+.prep-row:first-of-type { border-top: 0; padding-top: 0; }
+.prep-row .btn { flex-shrink: 0; }
