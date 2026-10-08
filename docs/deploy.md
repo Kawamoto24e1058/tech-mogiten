@@ -1,59 +1,66 @@
 # 本番に公開する手順（Cloudflare）
 
-所要時間の目安: 30分。自分のPC（Mac / Windows / Linux）で行います。
+おすすめは **A. GitHub とつないで自動で公開**（Workers Builds）です。PC にツールを入れる必要がなく、
+以後はブランチにプッシュするたびに自動で反映されます。手元の PC から公開したい場合は B を使います。
 
-## 0. 用意するもの
+## A. GitHub とつないで自動で公開（おすすめ・ブラウザだけで完結）
 
-- Cloudflare のアカウント（無料。 https://dash.cloudflare.com/sign-up ）
-- Node.js 20 以上（ `node -v` で確認）
-- Git
+所要時間の目安: 15分
 
-## 1. コードを手元に用意する
+1. https://dash.cloudflare.com にログインし、左のメニューから **Workers & Pages** を開く
+2. **作成（Create）** →「**Git リポジトリをインポート**（Import a repository）」を選ぶ
+3. GitHub を連携し、リポジトリ **kawamoto24e1058/tech-mogiten** を選ぶ
+4. 設定を次のようにする
+
+   | 項目 | 値 |
+   |---|---|
+   | プロジェクト名（Worker 名） | `tech-mogiten`（ `wrangler.jsonc` の `name` と同じにする） |
+   | 本番ブランチ | `claude/festival-shop-pos-system-4bahjj`（ main に取り込んだ後は `main` ） |
+   | ビルドコマンド | `npm run build` |
+   | デプロイコマンド | `npx wrangler deploy` |
+   | ルートディレクトリ | `/`（空欄のまま） |
+
+5. 「保存してデプロイ」を押す。ビルドのログが流れ、数分で終わる
+6. 公開された Worker の **設定（Settings）→ 変数とシークレット（Variables and Secrets）** で、
+   **シークレット** `MASTER_PIN` を追加する（部員以外に推測されにくい 8 文字以上）
+7. Worker の画面に表示される `https://tech-mogiten.<アカウント名>.workers.dev` が本番の URL
+
+> 6 の前は全体PINが未設定なので、管理画面にも入れません（安全側の動き）。
+
+ビルドやデプロイが失敗したら、ログの赤い行から最後までを共有してください。
+
+## B. 手元の PC から公開する
+
+### 0. 用意するもの
+
+- Node.js 20 以上（ `node -v` で確認）と Git
+
+### 1. コードを用意してログインする
 
 ```bash
 git clone https://github.com/kawamoto24e1058/tech-mogiten.git
 cd tech-mogiten
 git checkout claude/festival-shop-pos-system-4bahjj   # main に取り込んだ後なら不要
 npm install
-```
-
-## 2. Cloudflare にログインする
-
-```bash
 npx wrangler login
 ```
 
-ブラウザが開くので、Cloudflare にログインして「Allow」を押します。
-
-## 3. テック部の全体PINを設定する
+### 2. 全体PINを設定して公開する
 
 ```bash
-npx wrangler secret put MASTER_PIN
-```
-
-聞かれたら PIN を入力します。**部員以外に推測されにくいもの（8文字以上）**にしてください。
-これは「全体の売上」と、各店舗の最初の設定に使う一番強い PIN です。
-
-> 初めて公開する前に secret を設定しようとすると、「Worker がまだない」と聞かれることがあります。
-> その場合は「作成する（y）」を選ぶか、先に 4 を行ってから 3 をやり直してください。
-
-## 4. 公開する
-
-```bash
+npx wrangler secret put MASTER_PIN   # 「Worker がまだない」と聞かれたら作成を選ぶ
 npm run deploy
 ```
-
-最後に表示される `https://tech-mogiten.<アカウント名>.workers.dev` が本番のURLです。
 
 ### うまくいかないとき
 
 | 表示 | 対応 |
 |---|---|
-| Durable Objects に関するエラー（無料プランで使えない等） | Cloudflare の管理画面で Workers の利用状況を確認してください。解決しなければエラー全文を共有してください |
+| Durable Objects に関するエラー（無料プランで使えない等） | エラー全文を共有してください |
 | `Authentication error` | `npx wrangler login` をやり直す |
-| `MASTER_PIN` が違うと言われる | `npx wrangler secret put MASTER_PIN` で入れ直す |
+| 全体PINが違うと言われる | `MASTER_PIN` を入れ直す（A なら管理画面、B なら `wrangler secret put`） |
 
-## 5. 最初の設定（公開後に1回だけ）
+## 最初の設定（公開後に1回だけ）
 
 1. 本番URLの `/admin` を開き、全体PINを入力する
 2. 各店舗の「詳しく」→ 管理画面 →「設定」で
@@ -62,16 +69,16 @@ npm run deploy
 3. 「メニュー」で商品・価格・残り数を登録する
 4. 部員のスマホで本番URLを開き、合言葉を入力する
 
-## 6. リハーサルの後（本番の前日まで）
+## リハーサルの後（本番の前日まで）
 
 各店舗の管理画面 →「設定」→「営業の準備」→「練習データを消す」。
 メニュー・価格・合言葉は残り、注文と売上だけが消えます。
 
-## 7. 毎日の開店前・閉店後
+## 毎日の開店前・閉店後
 
 - 開店前: 「営業の準備」→「札をすべて空きに戻す」、「締め」→ 釣り銭準備金を入力
 - 閉店後: 「締め」で現金を数えて記録 →「売上」→「CSVで書き出す」で保存
 
 ## 修正を反映したいとき
 
-コードを直したら、もう一度 `npm run deploy` するだけです。データは消えません。
+A の場合は、本番ブランチにプッシュするだけで自動で反映されます。B の場合は、もう一度 `npm run deploy` します。どちらもデータは消えません。
