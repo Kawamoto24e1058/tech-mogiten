@@ -8,6 +8,8 @@
 
 ## 画面のURL
 
+本番: https://tech-mogiten.momotech.workers.dev
+
 | URL | 画面 | 必要なもの |
 |---|---|---|
 | `/` | 入口（店舗と画面の一覧） | なし |
