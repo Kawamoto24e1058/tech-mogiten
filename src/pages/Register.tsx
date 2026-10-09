@@ -67,7 +67,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const freeCount = Math.max(0, ticketCount - [...inUse].filter((t) => t <= ticketCount).length);
   const latestTicket = [...orders].filter((o) => o.ticket != null).sort((a, b) => b.createdAt - a.createdAt)[0]?.ticket ?? null;
   const suggested = nextTicketAfter(ticketCount, inUse, lastTicket ?? latestTicket);
-  const ticket = ticketChoice === "none" ? null : ticketChoice ?? suggested;
+  // 札は毎回押して選ぶ（選び忘れて別の番号のまま会計しないように）。次に渡す札は印をつけて示すだけ
+  const ticket = typeof ticketChoice === "number" ? ticketChoice : null;
   const label = (t: number | null) => ticketLabel(shop?.prefix ?? "", t);
 
   const lines = cart
@@ -103,7 +104,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     setStep("order");
   };
 
-  const ticketOk = ticket != null || ticketChoice === "none";
+  const ticketOk = ticketChoice !== null;
   const canConfirm = lines.length > 0 && total >= 0 && received !== "" && receivedNum >= total && ticketOk;
 
   /** 会計を確定する */
@@ -138,7 +139,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   // 選んでいる札が見えるように、一覧をそこまでスクロールする
   const ticketListRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    ticketListRef.current?.querySelector(".tk.is-selected")?.scrollIntoView({ block: "nearest", inline: "center" });
+    ticketListRef.current?.querySelector(".tk.is-selected, .tk.is-next")?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [ticket, wide, step, done]);
   useEffect(() => {
     const on = (e: KeyboardEvent) => keyRef.current(e);
@@ -281,22 +282,24 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     </section>
   );
 
-  const ticketText = ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし";
+  const ticketText = ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "未選択";
 
   /** 札をずらっと並べる。手に取った札の番号を押せばよい（何も押さなければ、前の札の次の番号） */
   const ticketButtons = Array.from({ length: ticketCount }, (_, i) => i + 1).map((n) => {
     const used = inUse.has(n);
     const selected = ticket === n;
+    const next = ticketChoice === null && n === suggested;
     return (
       <button
         key={n}
-        className={`tk ${used ? "is-used" : ""} ${selected ? "is-selected" : ""}`}
+        className={`tk ${used ? "is-used" : ""} ${selected ? "is-selected" : ""} ${next ? "is-next" : ""}`}
         disabled={used}
         aria-pressed={selected}
-        aria-label={`${label(n)}${used ? " 使用中" : selected ? " 選択中" : ""}`}
-        onClick={() => { buzz(); setTicketChoice(n === suggested ? null : n); }}
+        aria-label={`${label(n)}${used ? " 使用中" : selected ? " 選択中" : next ? " 次の札" : ""}`}
+        onClick={() => { buzz(); setTicketChoice(n); }}
       >
         {n}
+        {next && <small className="tk__next">次</small>}
       </button>
     );
   });
@@ -310,7 +313,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const ticketPanel = (
     <section className="ticket-panel" aria-label="番号札">
       <h2 className="step-title"><span className="step__no">1</span>札を渡す</h2>
-      <div className={`ticket-panel__num ${ticket == null ? "is-none" : ""}`}>{ticketText}</div>
+      <div className={`ticket-panel__num ${ticketChoice === null ? "is-unset" : ticket == null ? "is-none" : ""}`} aria-live="polite">{ticketChoice === null ? "札を押してください" : ticketText}</div>
       <p className="ticket-panel__free">空き {freeCount}枚 ・ 手に取った札を押す</p>
       <div className="tk-grid" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
       {noTicketButton}
@@ -343,7 +346,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す"><IconBackspace size={24} /></button>
       </div>
       <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
-        {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "札を選んでください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : "会計を確定"}
+        {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "① 札を押してください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : `札 ${ticketText} で会計を確定`}
       </Btn>
     </section>
   );
@@ -417,7 +420,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         <>
           <main className="register">
             <div className="ticket-bar">
-              <span className="ticket-bar__label">渡す札 <b className="ticket-bar__num">{ticketText}</b></span>
+              <span className="ticket-bar__label">渡す札 <b className={`ticket-bar__num ${ticketChoice === null ? "is-unset" : ""}`}>{ticketChoice === null ? "札を押してください" : ticketText}</b></span>
               <div className="tk-strip" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}{noTicketButton}</div>
             </div>
             {menuGrid}
