@@ -644,3 +644,54 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .pay__hint { text-align: center; }
 .pay__ticket { padding: 0 0 10px; border-top: 0; border-bottom: 1px solid var(--divider); }
 .done__undo { color: var(--muted); font-weight: 500; font-size: 0.9rem; }
+
+/* ---------- レジ: 札 → 注文 → 会計 の順に左から並べる ---------- */
+.step-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 0.95rem; font-weight: 700; color: var(--muted); }
+.register-wide--flow { grid-template-columns: 180px minmax(0, 1fr) 360px; }
+@media (max-width: 1099px) {
+  .register-wide--flow { grid-template-columns: 150px minmax(0, 1fr) 320px; gap: 12px; padding: 12px; }
+  .register-wide--flow .menu-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+}
+.ticket-panel { position: sticky; top: 76px; display: grid; gap: 10px; justify-items: stretch; text-align: center; }
+.ticket-panel .step-title { justify-content: flex-start; }
+.ticket-panel__num {
+  padding: 18px 8px 14px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line);
+  box-shadow: inset 0 6px 0 var(--accent), var(--shadow-1); font-size: 2.6rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.ticket-panel__num.is-none { font-size: 1.3rem; color: var(--muted); }
+.ticket-panel .hint { margin-top: -4px; font-size: 0.85rem; }
+.ticket-panel__free { margin: 0; color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.register-wide--flow .register-wide__side { position: sticky; top: 76px; max-height: calc(100dvh - 88px); overflow: auto; }
+.quick { grid-template-columns: repeat(4, 1fr); }
+.quick .chip { min-height: 52px; font-size: 1rem; padding: 4px; }
+.keypad .key { min-height: 58px; font-size: 1.5rem; }
+.register-wide--flow .keypad .key { min-height: 52px; }
+
+/* スマホ: 注文の画面の上に「渡す札」 */
+.ticket-bar { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; padding: 10px 14px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line); box-shadow: inset 4px 0 0 var(--accent); }
+.ticket-bar__label { color: var(--muted); font-weight: 600; font-size: 0.9rem; }
+.ticket-bar__num { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.ticket-bar .link { margin-left: auto; }
+.pay__items-ticket { margin-right: 10px; color: var(--text); }
+/* 右の列は画面の高さに収める（「会計を確定」が常に見えるように）。注文の一覧だけがスクロールする */
+.register-wide--flow .register-wide__side { display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.register-wide--flow .order-list { flex: 0 1 auto; min-height: 88px; overflow: auto; padding: 10px 14px; }
+.register-wide--flow .order-list li { padding: 4px 0; }
+.register-wide--flow .pay { flex: 0 0 auto; gap: 8px; padding: 12px 14px; }
+.register-wide--flow .pay .step-title { margin-bottom: 0; }
+.register-wide--flow .pay__sum { padding-bottom: 6px; gap: 0; }
+.register-wide--flow .pay__line--total .money { font-size: 1.9rem; }
+.register-wide--flow .pay__change { padding: 6px 12px; }
+.register-wide--flow .pay__change .money, .register-wide--flow .pay__change .pay__dash { font-size: 2.1rem; }
+.register-wide--flow .breakdown { margin: -2px 2px 0; font-size: 0.85rem; }
+.register-wide--flow .keypad { gap: 6px; }
+.register-wide--flow .keypad .key { min-height: 48px; font-size: 1.35rem; }
+.register-wide--flow .btn--big { min-height: 56px; }
+.quick { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 6px; }
+.quick .chip { min-height: 48px; font-size: 0.95rem; }
+/* タブレット・PC のレジは画面の高さに固定し、メニューと注文の一覧だけをスクロールさせる */
+.page--fit { height: 100dvh; min-height: 0; overflow: hidden; }
+.page--fit .register-wide--flow { flex: 1; min-height: 0; align-items: stretch; }
+.page--fit .register-wide__menu { min-height: 0; overflow: auto; padding: 2px 4px 16px 2px; }
+.page--fit .ticket-panel { position: static; align-content: start; }
+.page--fit .register-wide--flow .register-wide__side { position: static; max-height: none; min-height: 0; }

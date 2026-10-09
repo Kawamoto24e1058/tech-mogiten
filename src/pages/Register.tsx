@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { changeBreakdown, discountLines, menuColor, holdsTicket, linesTotal, nextTicketAfter, quickAmounts, ticketLabel, yen } from "../../shared/logic";
 import { RegisterHistory } from "../components/RegisterHistory";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
@@ -29,13 +29,13 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const { conn, state } = useConnection(shopId, "register", code);
   const { snapshot, outbox, status } = state;
   useWakeLock();
-  const wide = useIsWide();
+  // タブレット（横向き）・PC は「札 → 注文 → 会計」を左から並べる
+  const wide = useIsWide(760);
 
   const draftKey = `draft:${shopId}`;
   const [cart, setCartRaw] = useState<CartLine[]>(() => load(draftKey, []));
   const [step, setStep] = useState<"order" | "pay">("order");
   const [received, setReceived] = useState("");
-  const [keypad, setKeypad] = useState(false);
   const [ticketChoice, setTicketChoice] = useState<number | "none" | null>(null);
   const [pickTicket, setPickTicket] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -100,7 +100,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const reset = () => {
     setCart([]);
     setReceived("");
-    setKeypad(false);
     setTicketChoice(null);
     setStep("order");
   };
@@ -108,7 +107,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const ticketOk = ticket != null || ticketChoice === "none";
   const canConfirm = lines.length > 0 && total >= 0 && received !== "" && receivedNum >= total && ticketOk;
 
-  /** 会計を確定する。お預かりの金額ボタンを押したら、そのまま確定する */
+  /** 会計を確定する */
   const finish = (rec: number) => {
     if (!(lines.length > 0 && total >= 0 && rec >= total && ticketOk)) return;
     buzz();
@@ -123,6 +122,25 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     reset();
   };
   const confirm = () => canConfirm && finish(receivedNum);
+
+  /** お預かりの入力（テンキー・PCのキーボード共通） */
+  const typeKey = (k: string) => setReceived((r) => (r + k).replace(/^0+(?=\d)/, "").slice(0, 7));
+  // PC ではキーボードの数字・Backspace・Enter でも入力できるようにする
+  const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyRef.current = (e) => {
+    if (done || pickTicket || confirmClear || historyOpen || (!wide && step !== "pay")) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (/^[0-9]$/.test(e.key)) typeKey(e.key);
+    else if (e.key === "Backspace") setReceived((r) => r.slice(0, -1));
+    else if (e.key === "Enter") confirm();
+    else return;
+    e.preventDefault();
+  };
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => keyRef.current(e);
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, []);
 
   /** 会計完了の画面から、いまの会計を取り消して入力し直す */
   const undo = async () => {
@@ -259,47 +277,47 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     </section>
   );
 
+  const ticketText = ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし";
+
+  /** ① 札（左）。束のいちばん上の札を渡す */
+  const ticketPanel = (
+    <section className="ticket-panel" aria-label="番号札">
+      <h2 className="step-title"><span className="step__no">1</span>札を渡す</h2>
+      <div className={`ticket-panel__num ${ticket == null ? "is-none" : ""}`}>{ticketText}</div>
+      <p className="hint">{ticketChoice == null ? "束のいちばん上の札" : "選んだ札"}</p>
+      <Btn onClick={() => setPickTicket(true)}>別の札にする</Btn>
+      <p className="ticket-panel__free">空き {freeCount}枚</p>
+    </section>
+  );
+
+  /** ③ 会計（右）。テンキーで受け取った金額を入れ、よく使う金額はボタンで */
   const pay = (
     <section className="pay" aria-label="お会計">
+      {wide && <h2 className="step-title"><span className="step__no">3</span>会計</h2>}
       <div className="pay__sum">
         <div className="pay__line pay__line--total"><span>合計</span><Money value={total} /></div>
-        {keypad && <div className="pay__line"><span>お預かり</span>{received ? <Money value={receivedNum} /> : <b className="pay__dash">—</b>}</div>}
+        <div className="pay__line"><span>お預かり</span>{received ? <Money value={receivedNum} /> : <b className="pay__dash">—</b>}</div>
       </div>
-      <div className="pay__ticket">
-        <span className="pay__ticket-label">渡す札</span>
-        <b>{ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし"}</b>
-        <button className="link" onClick={() => setPickTicket(true)}>変更</button>
+      <div className={`pay__change ${received && shortBy <= 0 ? "is-ready" : ""} ${received && shortBy > 0 ? "is-short" : ""}`} aria-live="polite">
+        <span>{received && shortBy > 0 ? "たりません" : "お釣り"}</span>
+        {!received ? <b className="pay__dash">—</b> : <Money value={shortBy > 0 ? shortBy : change} />}
       </div>
-      {keypad && (
-        <>
-          <div className={`pay__change ${received && shortBy <= 0 ? "is-ready" : ""} ${received && shortBy > 0 ? "is-short" : ""}`} aria-live="polite">
-            <span>{received && shortBy > 0 ? "たりません" : "お釣り"}</span>
-            {!received ? <b className="pay__dash">—</b> : <Money value={shortBy > 0 ? shortBy : change} />}
-          </div>
-          {received !== "" && shortBy <= 0 && <Breakdown amount={change} />}
-        </>
-      )}
-      <div className="quick" role="group" aria-label="受け取った金額">
-        <button className="chip chip--exact" onClick={() => finish(total)} disabled={lines.length === 0 || !ticketOk}>ちょうど</button>
-        {quickAmounts(total).map((v) => (
-          <button key={v} className="chip" onClick={() => finish(v)} disabled={lines.length === 0 || !ticketOk}>{v.toLocaleString()}円</button>
+      {received !== "" && shortBy <= 0 && <Breakdown amount={change} />}
+      <div className="quick" role="group" aria-label="よく使う金額">
+        <button className={`chip ${received !== "" && receivedNum === total ? "is-on" : ""}`} onClick={() => { buzz(); setReceived(String(total)); }} disabled={lines.length === 0}>ちょうど</button>
+        {quickAmounts(total).slice(0, 3).map((v) => (
+          <button key={v} className={`chip ${receivedNum === v && v !== total ? "is-on" : ""}`} onClick={() => { buzz(); setReceived(String(v)); }}>{v.toLocaleString()}円</button>
         ))}
-        <button className={`chip ${keypad ? "is-on" : ""}`} onClick={() => { buzz(); setKeypad(!keypad); setReceived(""); }}>ほかの金額</button>
       </div>
-      {keypad && (
-        <div className="keypad" aria-label="金額の入力">
-          {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "00"].map((k) => (
-            <button key={k} className="key" onClick={() => { buzz(); setReceived((r) => (r + k).replace(/^0+(?=\d)/, "").slice(0, 7)); }}>{k}</button>
-          ))}
-          <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す"><IconBackspace size={24} /></button>
-        </div>
-      )}
-      {!keypad && ticketOk && lines.length > 0 && <p className="hint pay__hint">受け取った金額を押すと、会計が終わります。</p>}
-      {(keypad || !ticketOk || lines.length === 0) && (
-        <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
-          {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "札を選んでください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : "会計を確定"}
-        </Btn>
-      )}
+      <div className="keypad" aria-label="受け取った金額の入力">
+        {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "00"].map((k) => (
+          <button key={k} className="key" onClick={() => { buzz(); typeKey(k); }}>{k}</button>
+        ))}
+        <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す"><IconBackspace size={24} /></button>
+      </div>
+      <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
+        {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "札を選んでください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : "会計を確定"}
+      </Btn>
     </section>
   );
 
@@ -341,11 +359,15 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   if (wide) {
     return (
-      <Page shop={shop} className="page--work">
+      <Page shop={shop} className="page--work page--fit">
         {appbar}
         {banners}
-        <main className="register-wide">
-          <div className="register-wide__menu">{menuGrid}</div>
+        <main className="register-wide register-wide--flow">
+          {ticketPanel}
+          <div className="register-wide__menu">
+            <h2 className="step-title"><span className="step__no">2</span>注文を受ける</h2>
+            {menuGrid}
+          </div>
           <aside className="register-wide__side">
             <section className="order-list" aria-label="注文内容">
               <div className="order-list__head">
@@ -353,7 +375,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
                 {lines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
               </div>
               {lines.length === 0 ? (
-                <p className="hint">左のメニューを押すと追加されます。</p>
+                <p className="hint">メニューを押すと追加されます。</p>
               ) : (
                 <ul>
                   {lines.map((l) => (
@@ -393,7 +415,14 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       {banners}
       {step === "order" ? (
         <>
-          <main className="register">{menuGrid}</main>
+          <main className="register">
+            <div className="ticket-bar">
+              <span className="ticket-bar__label">渡す札</span>
+              <b className="ticket-bar__num">{ticketText}</b>
+              <button className="link" onClick={() => setPickTicket(true)}>別の札にする</button>
+            </div>
+            {menuGrid}
+          </main>
           <div className="bottom-bar">
             <div className="bottom-bar__sum">
               <span className="bottom-bar__count">{itemCount ? `${itemCount}点` : "未選択"}</span>
@@ -407,7 +436,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       ) : (
         <main className="register register--pay">
           <button className="back-link" onClick={() => setStep("order")}><IconBack size={20} />注文に戻る</button>
-          <p className="pay__items">{lines.map((l) => `${l.name}×${l.qty}`).join("、")}{discountText && <span className="pay__discount">{discountText}</span>}</p>
+          <p className="pay__items"><b className="pay__items-ticket">札 {ticketText}</b>{lines.map((l) => `${l.name}×${l.qty}`).join("、")}{discountText && <span className="pay__discount">{discountText}</span>}</p>
           {pay}
         </main>
       )}
