@@ -79,6 +79,14 @@ export interface ShopSnapshot {
 export interface DisplaySnapshot {
   shop: ShopPublic;
   ready: { ticket: string; readyAt: number }[];
+  /** 準備中（調理中）の札 */
+  cooking?: string[];
+  /** 店先に出すメニュー（割引の行は除く） */
+  menu?: { name: string; price: number; soldOut: boolean }[];
+  /** まとめ買い割引の説明（例: 「2本割」 2個ごとに100円引き） */
+  deals?: string[];
+  /** 待ち時間の目安（分）。データが少ないときは null */
+  waitMin?: number | null;
   serverTime: number;
 }
 

@@ -784,3 +784,69 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .day-totals__all b { color: var(--text); font-size: 1.2rem; }
 .trash-row { display: flex; align-items: center; gap: 12px; padding: 8px; }
 .trash-row .order-row__main { flex: 1; }
+
+/* =====================================================================
+ * 呼び出し表示（店先のモニター）
+ *   遠くからでも読めるよう、暗い背景に白い大きな数字。いちばん新しい番号を一番大きく。
+ *   右に「準備中」とメニュー（値段・売り切れ）を出し、並んでいる人が先に決められるようにする
+ * ===================================================================== */
+.dsp { min-height: 100dvh; display: flex; flex-direction: column; background: #0b0c0f; color: #f4f4f5; font-variant-numeric: tabular-nums; }
+.dsp__head { display: flex; align-items: center; gap: 24px; padding: clamp(10px, 1.6vw, 20px) clamp(16px, 3vw, 40px); border-bottom: 1px solid #26272b; }
+.dsp__shop { display: flex; align-items: center; gap: 14px; font-size: clamp(1.3rem, 2.6vw, 2.4rem); font-weight: 700; }
+.dsp__badge { display: grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 0.3em; background: var(--accent); color: var(--on-accent); }
+.dsp__wait { margin-left: auto; padding: 0.3em 0.8em; border-radius: 999px; background: #1c1d22; border: 1px solid #3f3f46; font-size: clamp(1rem, 1.8vw, 1.6rem); }
+.dsp__wait b { font-size: 1.3em; margin: 0 0.1em; }
+.dsp__wait small { margin-left: 0.3em; color: #a1a1aa; font-size: 0.7em; }
+.dsp__clock { margin-left: auto; font-size: clamp(1.2rem, 2.4vw, 2.2rem); font-weight: 600; color: #d4d4d8; }
+.dsp__wait + .dsp__clock { margin-left: 0; }
+
+.dsp__body { flex: 1; display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr); gap: clamp(16px, 2.4vw, 36px); padding: clamp(16px, 2.4vw, 36px) clamp(16px, 3vw, 40px); }
+@media (max-width: 860px) { .dsp__body { grid-template-columns: 1fr; } }
+
+.dsp__label { margin: 0 0 clamp(10px, 1.4vw, 18px); font-size: clamp(1.1rem, 2.2vw, 2rem); font-weight: 700; }
+.dsp__label span { margin-left: 0.4em; font-weight: 400; color: #a1a1aa; font-size: 0.7em; }
+
+.dsp__spot { display: flex; flex-direction: column; align-items: center; padding: clamp(10px, 1.4vw, 20px) 16px clamp(14px, 2vw, 28px); border-radius: clamp(14px, 1.6vw, 24px); background: #fff; color: #0b0c0f; box-shadow: inset 0 clamp(8px, 0.9vw, 14px) 0 var(--accent); }
+.dsp__spot-tag { margin-top: clamp(8px, 1vw, 14px); padding: 0.15em 0.9em; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: clamp(0.95rem, 1.6vw, 1.5rem); font-weight: 700; }
+.dsp__spot-num { font-size: clamp(5rem, 15vw, 14rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; }
+
+.dsp__grid { list-style: none; margin: clamp(14px, 1.8vw, 24px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(130px, 14vw, 220px), 1fr)); gap: clamp(10px, 1.2vw, 18px); }
+.dsp__num { padding: 0.12em 0.2em; border-radius: 0.18em; background: #f4f4f5; color: #0b0c0f; text-align: center; font-size: clamp(2.6rem, 6vw, 5.4rem); font-weight: 800; line-height: 1.15; }
+.dsp__empty { margin: 12vh 0; text-align: center; font-size: clamp(1.3rem, 3vw, 2.4rem); color: #d4d4d8; }
+
+.dsp__long { margin-top: clamp(18px, 2.4vw, 32px); padding-top: clamp(12px, 1.6vw, 20px); border-top: 1px solid #3f3f46; }
+.dsp__long h2 { margin: 0 0 10px; font-size: clamp(1rem, 1.8vw, 1.5rem); font-weight: 600; color: #e4e4e7; }
+.dsp__long ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: clamp(1.8rem, 4vw, 3.4rem); font-weight: 700; }
+
+.dsp__side { display: flex; flex-direction: column; gap: clamp(14px, 1.8vw, 24px); }
+.dsp__card { padding: clamp(14px, 1.6vw, 22px); border-radius: clamp(12px, 1.2vw, 18px); background: #16171b; border: 1px solid #2a2b31; }
+.dsp__card-title { display: flex; align-items: baseline; gap: 0.4em; margin: 0 0 12px; font-size: clamp(1.05rem, 1.8vw, 1.6rem); font-weight: 700; }
+.dsp__card-title span { color: #a1a1aa; font-weight: 400; font-size: 0.7em; }
+.dsp__card-title b { margin-left: auto; font-size: 1.2em; }
+.dsp__muted { margin: 0; color: #a1a1aa; font-size: clamp(1rem, 1.6vw, 1.4rem); }
+.dsp__cooking { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: clamp(1.4rem, 2.8vw, 2.4rem); font-weight: 700; color: #d4d4d8; }
+
+.dsp__menu ul:first-of-type { list-style: none; margin: 0; padding: 0; }
+.dsp__menu li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0.35em 0; font-size: clamp(1.05rem, 1.8vw, 1.6rem); }
+.dsp__menu li + li { border-top: 1px solid #2a2b31; }
+.dsp__menu-price { font-size: 1.15em; }
+.dsp__menu li.is-soldout .dsp__menu-name { color: #a1a1aa; text-decoration: line-through; }
+.dsp__soldout { padding: 0.05em 0.6em; border-radius: 999px; border: 1px solid #f87171; color: #fca5a5; font-size: 0.8em; font-weight: 700; }
+.dsp__deals { list-style: none; margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #1f2a22; color: #bbf7d0; font-size: clamp(0.95rem, 1.5vw, 1.3rem); font-weight: 600; }
+
+.dsp__foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px clamp(16px, 3vw, 40px); border-top: 1px solid #26272b; font-size: clamp(1rem, 1.6vw, 1.4rem); color: #e4e4e7; }
+.dsp__offline { color: #fde68a; font-weight: 600; }
+.dsp__sound { display: inline-flex; align-items: center; gap: 8px; min-height: var(--tap); padding: 6px 16px; border-radius: var(--r-sm); border: 1px solid #71717a; background: transparent; color: #fff; font-weight: 600; }
+.dsp__sound small { color: #a1a1aa; font-weight: 400; }
+/* 横長のモニターでは画面に収める（メニューが長いときは下を切る） */
+@media (min-width: 861px) {
+  .dsp { height: 100dvh; overflow: hidden; }
+  .dsp__body { min-height: 0; }
+  .dsp__ready, .dsp__side { min-height: 0; overflow: hidden; }
+  .dsp__menu { min-height: 0; overflow: hidden; flex: 1 1 auto; }
+}
+@media (max-width: 600px) {
+  .dsp__head { flex-wrap: wrap; gap: 8px 16px; }
+  .dsp__shop { white-space: nowrap; }
+  .dsp__wait { order: 3; margin-left: 0; }
+}

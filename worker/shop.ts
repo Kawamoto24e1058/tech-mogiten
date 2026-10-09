@@ -263,7 +263,19 @@ export class ShopDO extends DurableObject<Env> {
       .exec<{ ticket: number; ready_at: number }>("SELECT ticket, ready_at FROM orders WHERE status = 'ready' AND ticket IS NOT NULL AND deleted_at IS NULL ORDER BY ready_at")
       .toArray()
       .map((r) => ({ ticket: ticketLabel(shop.prefix, r.ticket), readyAt: r.ready_at }));
-    return { shop, ready, serverTime: Date.now() };
+    const cooking = this.sql
+      .exec<{ ticket: number }>("SELECT ticket FROM orders WHERE status = 'cooking' AND ticket IS NOT NULL AND deleted_at IS NULL ORDER BY created_at")
+      .toArray()
+      .map((r) => ticketLabel(shop.prefix, r.ticket));
+    const menu = this.menu().filter((m) => m.price >= 0).map((m) => ({ name: m.name, price: m.price, soldOut: m.soldOut }));
+    const deals = this.discounts().filter((d) => d.enabled).map((d) => `${d.name}：${d.every}個ごとに${d.off}円引き`);
+    // 待ち時間の目安: 直近30分にできた注文の、会計からできるまでの時間（中央値）。3件未満なら出さない
+    const waits = this.sql
+      .exec<{ w: number }>("SELECT ready_at - created_at AS w FROM orders WHERE ready_at >= ? AND deleted_at IS NULL AND status != 'cancelled' ORDER BY w", Date.now() - 30 * 60_000)
+      .toArray()
+      .map((r) => r.w);
+    const waitMin = waits.length >= 3 ? Math.max(1, Math.ceil(waits[Math.floor(waits.length / 2)] / 60_000)) : null;
+    return { shop, ready, cooking, menu, deals, waitMin, serverTime: Date.now() };
   }
 
   private audit(action: string, orderId: string | null, detail: unknown) {
