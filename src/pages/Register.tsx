@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { changeBreakdown, discountLines, menuColor, holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
+import { changeBreakdown, discountLines, menuColor, holdsTicket, linesTotal, nextTicketAfter, quickAmounts, ticketLabel, yen } from "../../shared/logic";
 import { RegisterHistory } from "../components/RegisterHistory";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
 import { IconBack, IconBackspace, IconMinus, IconPlus } from "../components/icons";
 import type { CSSProperties } from "react";
 import { useConnection, viewMenu, viewOrders } from "../sync";
-import { buzz, load, save, uuid } from "../util";
+import { api, buzz, load, save, uuid } from "../util";
 
 type CartLine = { itemId: string; qty: number };
 const LOW_TICKETS = 3;
-const QUICK = [1000, 5000, 10000];
 /** 残り数がこれ以下になったら、メニューに「残りN」と出す */
 const LOW_STOCK = 10;
 
@@ -40,7 +39,16 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [ticketChoice, setTicketChoice] = useState<number | "none" | null>(null);
   const [pickTicket, setPickTicket] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [done, setDone] = useState<{ ticket: string; change: number } | null>(null);
+  const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]; prevLast: number | null } | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const [undoError, setUndoError] = useState("");
+  // 前に渡した札。次はその次の番号を渡す（札の束の上から順に渡せるように）
+  const lastKey = `lastTicket:${shopId}`;
+  const [lastTicket, setLastTicketRaw] = useState<number | null>(() => load(lastKey, null));
+  const setLastTicket = (t: number | null) => {
+    setLastTicketRaw(t);
+    save(lastKey, t);
+  };
   const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
@@ -58,7 +66,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const inUse = useMemo(() => new Set(orders.filter(holdsTicket).map((o) => o.ticket!)), [orders]);
   const ticketCount = shop?.ticketCount ?? 0;
   const freeCount = Math.max(0, ticketCount - [...inUse].filter((t) => t <= ticketCount).length);
-  const suggested = nextFreeTicket(ticketCount, inUse);
+  const latestTicket = [...orders].filter((o) => o.ticket != null).sort((a, b) => b.createdAt - a.createdAt)[0]?.ticket ?? null;
+  const suggested = nextTicketAfter(ticketCount, inUse, lastTicket ?? latestTicket);
   const ticket = ticketChoice === "none" ? null : ticketChoice ?? suggested;
   const label = (t: number | null) => ticketLabel(shop?.prefix ?? "", t);
 
@@ -99,14 +108,48 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const ticketOk = ticket != null || ticketChoice === "none";
   const canConfirm = lines.length > 0 && total >= 0 && received !== "" && receivedNum >= total && ticketOk;
 
-  const confirm = () => {
-    if (!canConfirm) return;
+  /** 会計を確定する。お預かりの金額ボタンを押したら、そのまま確定する */
+  const finish = (rec: number) => {
+    if (!(lines.length > 0 && total >= 0 && rec >= total && ticketOk)) return;
+    buzz();
+    const id = uuid();
     conn.send({
       kind: "createOrder",
-      order: { id: uuid(), ticket, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })), received: receivedNum, createdAt: Date.now() },
+      order: { id, ticket, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })), received: rec, createdAt: Date.now() },
     });
-    setDone({ ticket: label(ticket), change });
+    setDone({ ticket: label(ticket), change: rec - total, orderId: id, cart, prevLast: lastTicket });
+    if (ticket != null) setLastTicket(ticket);
+    setUndoError("");
     reset();
+  };
+  const confirm = () => canConfirm && finish(receivedNum);
+
+  /** 会計完了の画面から、いまの会計を取り消して入力し直す */
+  const undo = async () => {
+    if (!done) return;
+    const id = done.orderId;
+    const isPending = () => conn.getState().outbox.some((p) => p.op.kind === "createOrder" && p.op.order.id === id);
+    setUndoing(true);
+    setUndoError("");
+    try {
+      if (status !== "online" && conn.retract(id)) {
+        // 電波がなく、まだ送っていない → 送るのをやめるだけ
+      } else {
+        // 送信中なら、届くのを少し待ってから取り消す
+        for (let i = 0; i < 30 && isPending(); i++) await new Promise((r) => setTimeout(r, 100));
+        if (!(isPending() && conn.retract(id))) {
+          await api(`/api/shops/${encodeURIComponent(shopId)}/history/${encodeURIComponent(id)}/cancel`, code, { method: "POST", body: JSON.stringify({ reason: "レジでやり直し" }) });
+        }
+      }
+      setCart(done.cart);
+      setLastTicket(done.prevLast);
+      setStep("pay");
+      setDone(null);
+    } catch (e) {
+      setUndoError(e instanceof Error ? e.message : "取り消せませんでした。履歴から取り消してください");
+    } finally {
+      setUndoing(false);
+    }
   };
 
   const appbar = (
@@ -158,6 +201,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
             <Banner kind="warn">オフラインのため、まだ厨房に届いていません。口頭で伝えてください（電波が戻ると自動で送られます）。</Banner>
           )}
           <Btn variant="accent" big onClick={() => setDone(null)}>次のお客さん</Btn>
+          {undoError && <Banner kind="error">{undoError}</Banner>}
+          <button className="link done__undo" onClick={() => void undo()} disabled={undoing}>{undoing ? "取り消しています…" : "間違えた（この会計を取り消して入力し直す）"}</button>
         </main>
         {historyModal}
       </Page>
@@ -218,19 +263,28 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     <section className="pay" aria-label="お会計">
       <div className="pay__sum">
         <div className="pay__line pay__line--total"><span>合計</span><Money value={total} /></div>
-        <div className="pay__line"><span>お預かり</span>{received ? <Money value={receivedNum} /> : <b className="pay__dash">—</b>}</div>
+        {keypad && <div className="pay__line"><span>お預かり</span>{received ? <Money value={receivedNum} /> : <b className="pay__dash">—</b>}</div>}
       </div>
-      <div className={`pay__change ${received && shortBy <= 0 ? "is-ready" : ""} ${received && shortBy > 0 ? "is-short" : ""}`} aria-live="polite">
-        <span>{received && shortBy > 0 ? "たりません" : "お釣り"}</span>
-        {!received ? <b className="pay__dash">—</b> : <Money value={shortBy > 0 ? shortBy : change} />}
+      <div className="pay__ticket">
+        <span className="pay__ticket-label">渡す札</span>
+        <b>{ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし"}</b>
+        <button className="link" onClick={() => setPickTicket(true)}>変更</button>
       </div>
-      {received !== "" && shortBy <= 0 && <Breakdown amount={change} />}
-      <div className="quick" role="group" aria-label="お預かり金額">
-        <button className={`chip ${received !== "" && receivedNum === total ? "is-on" : ""}`} onClick={() => { buzz(); setReceived(String(total)); setKeypad(false); }} disabled={total === 0}>ちょうど</button>
-        {QUICK.map((v) => (
-          <button key={v} className={`chip ${!keypad && receivedNum === v && v !== total ? "is-on" : ""}`} onClick={() => { buzz(); setReceived(String(v)); setKeypad(false); }}>{v.toLocaleString()}円</button>
+      {keypad && (
+        <>
+          <div className={`pay__change ${received && shortBy <= 0 ? "is-ready" : ""} ${received && shortBy > 0 ? "is-short" : ""}`} aria-live="polite">
+            <span>{received && shortBy > 0 ? "たりません" : "お釣り"}</span>
+            {!received ? <b className="pay__dash">—</b> : <Money value={shortBy > 0 ? shortBy : change} />}
+          </div>
+          {received !== "" && shortBy <= 0 && <Breakdown amount={change} />}
+        </>
+      )}
+      <div className="quick" role="group" aria-label="受け取った金額">
+        <button className="chip chip--exact" onClick={() => finish(total)} disabled={lines.length === 0 || !ticketOk}>ちょうど</button>
+        {quickAmounts(total).map((v) => (
+          <button key={v} className="chip" onClick={() => finish(v)} disabled={lines.length === 0 || !ticketOk}>{v.toLocaleString()}円</button>
         ))}
-        <button className={`chip ${keypad ? "is-on" : ""}`} onClick={() => { buzz(); setKeypad(!keypad); if (!keypad) setReceived(""); }}>ほかの金額</button>
+        <button className={`chip ${keypad ? "is-on" : ""}`} onClick={() => { buzz(); setKeypad(!keypad); setReceived(""); }}>ほかの金額</button>
       </div>
       {keypad && (
         <div className="keypad" aria-label="金額の入力">
@@ -240,14 +294,12 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
           <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す"><IconBackspace size={24} /></button>
         </div>
       )}
-      <div className="pay__ticket">
-        <span className="pay__ticket-label">渡す札</span>
-        <b>{ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし"}</b>
-        <button className="link" onClick={() => setPickTicket(true)}>変更</button>
-      </div>
-      <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
-        {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : received === "" ? "お預かり金額を選んでください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : !ticketOk ? "札を選んでください" : "会計を確定"}
-      </Btn>
+      {!keypad && ticketOk && lines.length > 0 && <p className="hint pay__hint">受け取った金額を押すと、会計が終わります。</p>}
+      {(keypad || !ticketOk || lines.length === 0) && (
+        <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
+          {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "札を選んでください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : "会計を確定"}
+        </Btn>
+      )}
     </section>
   );
 

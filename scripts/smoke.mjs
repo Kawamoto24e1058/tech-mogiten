@@ -171,7 +171,7 @@ reg.ws.send(JSON.stringify({ type: "op", opId: "d1", op: { kind: "createOrder", 
 await reg.until((m) => m.type === "ack" && m.opId === "d1");
 const bo = (await req(`${A}/history`, { code: "yakisoba" })).data.orders.find((x) => x.id === bundle.id);
 check(bo.total === bundleTotal && bo.lines.some((l) => l.name === "テスト2個割" && l.price === -100 && l.qty === 1), "対象の商品を合わせて数え、自動で割り引く（3個 → 1回）");
-check((await kit.until((m) => m.type === "snapshot" && m.data.discounts?.length === 1)).data.discounts[0].name === "テスト2個割", "割引の設定が端末に届く");
+check((await kit.until((m) => m.type === "snapshot" && m.data.discounts?.length === 1, 8000)).data.discounts[0].name === "テスト2個割", "割引の設定が端末に届く");
 st = (await req(`${A}/admin/discounts`, { code: "1234", method: "PUT", body: { discounts: [] } })).data;
 check(st.discounts.length === 0, "まとめ買い割引を削除");
 

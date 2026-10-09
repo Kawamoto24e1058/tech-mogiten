@@ -61,6 +61,26 @@ export function nextFreeTicket(count: number, inUse: Iterable<number>): number |
   return null;
 }
 
+/**
+ * 前に渡した札の次から、順番に空いている札。札は束の上から順に渡し、返ってきた札は束の下に戻せばよい。
+ * 全部使用中なら null
+ */
+export function nextTicketAfter(count: number, inUse: Iterable<number>, last: number | null): number | null {
+  const used = new Set(inUse);
+  const start = last != null && last >= 1 && last <= count ? last : 0;
+  for (let i = 1; i <= count; i++) {
+    const n = ((start + i - 1) % count) + 1;
+    if (!used.has(n)) return n;
+  }
+  return null;
+}
+
+/** お預かりの候補（合計より大きい、よく出されるお札・硬貨）。最大4つ */
+export function quickAmounts(total: number): number[] {
+  const nextThousand = (Math.floor(total / 1000) + 1) * 1000;
+  return [...new Set([500, 1000, nextThousand, 5000, 10000])].filter((v) => v > total).sort((a, b) => a - b).slice(0, 4);
+}
+
 /** メニューをもとに明細を作る。存在しない商品・数量 0 以下は除く。 */
 export function buildLines(menu: MenuItem[], input: { itemId: string; qty: number }[]): OrderLine[] {
   const byId = new Map(menu.map((m) => [m.id, m]));

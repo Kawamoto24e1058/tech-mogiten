@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDay, buildLines, changeBreakdown, halfHourSlot, linesTotal, nextFreeTicket, ordersCsv, priceLines, summarize, ticketLabel, holdsTicket } from "../shared/logic";
+import { businessDay, buildLines, changeBreakdown, halfHourSlot, linesTotal, nextFreeTicket, nextTicketAfter, ordersCsv, quickAmounts, priceLines, summarize, ticketLabel, holdsTicket } from "../shared/logic";
 import type { DiscountRule, MenuItem, Order } from "../shared/types";
 
 const order = (p: Partial<Order>): Order => ({
@@ -99,5 +99,21 @@ describe("まとめ買い割引", () => {
 
   it("止めている割引は使わない", () => {
     expect(linesTotal(priceLines(menu, [{ ...rule, enabled: false }], [{ itemId: "tare", qty: 2 }]))).toBe(400);
+  });
+});
+
+describe("札とお預かりの候補", () => {
+  it("前に渡した札の次から順に、使用中を飛ばして選ぶ", () => {
+    expect(nextTicketAfter(5, [], null)).toBe(1);
+    expect(nextTicketAfter(5, [], 2)).toBe(3);
+    expect(nextTicketAfter(5, [3, 4], 2)).toBe(5);
+    expect(nextTicketAfter(5, [1], 5)).toBe(2);
+    expect(nextTicketAfter(3, [1, 2, 3], 1)).toBeNull();
+  });
+  it("合計より大きいお札だけを候補にする", () => {
+    expect(quickAmounts(300)).toEqual([500, 1000, 5000, 10000]);
+    expect(quickAmounts(800)).toEqual([1000, 5000, 10000]);
+    expect(quickAmounts(1200)).toEqual([2000, 5000, 10000]);
+    expect(quickAmounts(1000)).toEqual([2000, 5000, 10000]);
   });
 });

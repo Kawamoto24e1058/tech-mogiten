@@ -184,6 +184,14 @@ export class ShopConnection {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "op", ...p }));
   }
 
+  /** まだ送れていない注文を取り下げる。取り下げられたら true（送信済みなら false） */
+  retract(orderId: string): boolean {
+    const outbox = this.state.outbox.filter((p) => !(p.op.kind === "createOrder" && p.op.order.id === orderId));
+    if (outbox.length === this.state.outbox.length) return false;
+    this.update({ outbox });
+    return true;
+  }
+
   close() {
     this.closed = true;
     clearTimeout(this.timer);
