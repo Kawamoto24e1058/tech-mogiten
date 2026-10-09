@@ -850,3 +850,36 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
   .dsp__shop { white-space: nowrap; }
   .dsp__wait { order: 3; margin-left: 0; }
 }
+
+/* ---------- 呼び出し表示: 昼モード（明るい場所・屋外向け） ----------
+ * 白地に黒の太い文字。灰色の薄い文字は使わず、枠は太くはっきり。色はお店の色の枠だけ */
+.dsp--day { background: #ffffff; color: #000; }
+.dsp--day .dsp__head { border-bottom: 3px solid #000; }
+.dsp--day .dsp__shop { font-weight: 800; }
+.dsp--day .dsp__wait { background: #fff; border: 3px solid #000; color: #000; font-weight: 700; }
+.dsp--day .dsp__wait small { color: #000; }
+.dsp--day .dsp__clock { color: #000; font-weight: 800; }
+.dsp--day .dsp__label { font-weight: 800; }
+.dsp--day .dsp__label span, .dsp--day .dsp__card-title span { color: #27272a; }
+.dsp--day .dsp__spot { background: #fff; color: #000; border: clamp(6px, 0.7vw, 10px) solid var(--accent); box-shadow: none; }
+.dsp--day .dsp__spot-num { font-weight: 900; }
+.dsp--day .dsp__num { background: #fff; color: #000; border: 4px solid #000; font-weight: 900; }
+.dsp--day .dsp__empty { color: #18181b; font-weight: 700; }
+.dsp--day .dsp__long { border-top: 3px solid #000; }
+.dsp--day .dsp__long h2 { color: #000; font-weight: 800; }
+.dsp--day .dsp__card { background: #fff; border: 3px solid #000; }
+.dsp--day .dsp__card-title { font-weight: 800; }
+.dsp--day .dsp__muted { color: #27272a; }
+.dsp--day .dsp__cooking { color: #000; font-weight: 800; }
+.dsp--day .dsp__menu li { font-weight: 700; }
+.dsp--day .dsp__menu li + li { border-top: 2px solid #d4d4d8; }
+.dsp--day .dsp__menu-price { font-weight: 900; }
+.dsp--day .dsp__menu li.is-soldout .dsp__menu-name { color: #52525b; }
+.dsp--day .dsp__soldout { border: 2px solid #b91c1c; color: #b91c1c; background: #fff; }
+.dsp--day .dsp__deals { background: #dcfce7; color: #14532d; border: 2px solid #15803d; font-weight: 800; }
+.dsp--day .dsp__foot { border-top: 3px solid #000; color: #000; font-weight: 700; }
+.dsp--day .dsp__offline { color: #92400e; }
+.dsp--day .dsp__sound { border: 2px solid #000; color: #000; background: #fff; }
+.dsp--day .dsp__sound small { color: #27272a; }
+.dsp__theme { margin-left: auto; }
+.dsp__theme + .dsp__sound { margin-left: 0; }

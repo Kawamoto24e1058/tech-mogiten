@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useConnection } from "../sync";
-import { chime } from "../util";
+import { chime, load, save } from "../util";
 import { yen } from "../../shared/logic";
 import { accentStyle, useNow, useWakeLock } from "../components/ui";
 import { IconBell, IconBellOff } from "../components/icons";
@@ -35,6 +35,9 @@ export function Display({ shopId }: { shopId: string }) {
   const now = useNow(5000);
   // 音はブラウザの決まりで、画面を1回押してからでないと鳴らせない。毎回「音なし」から始める
   const [sound, setSound] = useState<Sound>("off");
+  // 昼（明るい場所）は白地に黒文字のほうが映り込みに強く読みやすい。営業は日中なので昼を基本にする
+  const [theme, setTheme] = useState<"day" | "night">(() => load("displayTheme", "day"));
+  const switchTheme = () => { const next = theme === "day" ? "night" : "day"; setTheme(next); save("displayTheme", next); };
   const prev = useRef<Set<string> | null>(null);
   useWakeLock();
 
@@ -59,7 +62,7 @@ export function Display({ shopId }: { shopId: string }) {
   const clock = new Date(t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" });
 
   return (
-    <div className="dsp" style={accentStyle(data?.shop.color)}>
+    <div className={`dsp ${theme === "day" ? "dsp--day" : ""}`} style={accentStyle(data?.shop.color)}>
       <header className="dsp__head">
         <div className="dsp__shop">
           <span className="dsp__badge" aria-hidden>{data?.shop.prefix || data?.shop.name.slice(0, 1)}</span>
@@ -124,6 +127,9 @@ export function Display({ shopId }: { shopId: string }) {
       <footer className="dsp__foot">
         <span>番号札をお持ちの方は、受け取り口へお越しください</span>
         {state.status !== "online" && <span className="dsp__offline">接続中…</span>}
+        <button className="dsp__sound dsp__theme" onClick={switchTheme} aria-label={`表示を${theme === "day" ? "夜（暗い場所）" : "昼（明るい場所）"}向けにする`}>
+          {theme === "day" ? "昼モード" : "夜モード"}<small>（押すと切り替え）</small>
+        </button>
         <button className="dsp__sound" onClick={() => { const next = NEXT_SOUND[sound]; setSound(next); if (next !== "off") chime(); if (next === "voice") setTimeout(() => speak(`${data?.shop.prefix ?? ""}-1`), 700); }}>
           {sound === "off" ? <IconBellOff size={18} /> : <IconBell size={18} />}
           {SOUND_LABEL[sound]}
