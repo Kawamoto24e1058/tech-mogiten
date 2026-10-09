@@ -96,7 +96,7 @@ kit.ws.send(JSON.stringify({ type: "op", opId: "k1", op: { kind: "setStatus", or
 await kit.until((m) => m.type === "ack" && m.opId === "k1");
 const d = await disp.until((m) => m.type === "display" && m.data.ready.length > 0);
 check(d.data.ready[0].ticket === "A-1", "「できた」で呼び出し表示に A-1 が出る");
-check(!JSON.stringify(d).includes("テスト焼きそば"), "呼び出し表示には注文内容を送らない");
+check(!JSON.stringify(d).includes("\"lines\"") && !("orders" in d.data), "呼び出し表示には注文内容を送らない（メニューと札番号だけ）");
 
 kit.ws.send(JSON.stringify({ type: "op", opId: "k2", op: { kind: "setStatus", orderId: o.id, status: "handed" } }));
 await kit.until((m) => m.type === "ack" && m.opId === "k2");
