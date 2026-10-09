@@ -17,8 +17,11 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
   useWakeLock();
   const now = useNow();
   const wide = useIsWide();
-  const [tab, setTab] = useState<Tab>("cooking");
-  const [handing, setHanding] = useState<View | null>(null);
+  // スマホは「できた（渡す）」と「調理中」を1つの一覧にまとめ、切り替えの手間をなくす
+  const [tab, setTab] = useState<"active" | "handed">("active");
+  // 渡したあと数秒だけ「戻す」を出す（確認の画面をなくして、押す回数を減らすかわりに）
+  const [justHanded, setJustHanded] = useState<View | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [soldOutOpen, setSoldOutOpen] = useState(false);
   // 新しい注文が来たら音で知らせる（厨房は画面を見ていないことが多いため）
   const [sound, setSound] = useState(() => load("kitchenSound", false));
@@ -45,6 +48,13 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
   }, [cookingIds, sound, snapshot]);
   const label = (o: View) => ticketLabel(shop?.prefix ?? "", o.ticket);
   const set = (o: View, s: Tab) => conn.send({ kind: "setStatus", orderId: o.id, status: s });
+  const handOver = (o: View) => {
+    set(o, "handed");
+    setJustHanded(o);
+    clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setJustHanded(null), 8000);
+  };
+  useEffect(() => () => clearTimeout(undoTimer.current), []);
   const menuIndex = new Map((snapshot?.menu ?? []).map((m, i) => [m.id, menuColor(m, i).solid]));
   const colorOf = (itemId: string) => menuIndex.get(itemId) ?? "#c7cbd1";
 
@@ -80,7 +90,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
         {o.status === "cooking" && <Btn variant="ok" big onClick={() => set(o, "ready")}>できた</Btn>}
         {o.status === "ready" && (
           <div className="kcard__actions">
-            <Btn variant="accent" big onClick={() => setHanding(o)}>渡す</Btn>
+            <Btn variant="accent" big onClick={() => handOver(o)}>札を受け取って渡した</Btn>
             <button className="link" onClick={() => set(o, "cooking")}>調理中に戻す</button>
           </div>
         )}
@@ -142,30 +152,32 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
         <main className="kitchen-wide">{(["cooking", "ready", "handed"] as Tab[]).map(column)}</main>
       ) : (
         <>
-          <nav className="segmented" aria-label="表示の切り替え">
-            {(["cooking", "ready", "handed"] as Tab[]).map((t) => (
-              <button key={t} className={tab === t ? "is-on" : ""} aria-pressed={tab === t} onClick={() => setTab(t)}>
-                {TAB_LABEL[t]}<span className="count">{lists[t].length}</span>
-              </button>
-            ))}
+          <nav className="segmented segmented--2" aria-label="表示の切り替え">
+            <button className={tab === "active" ? "is-on" : ""} aria-pressed={tab === "active"} onClick={() => setTab("active")}>
+              できた・調理中<span className="count">{ready.length + cooking.length}</span>
+            </button>
+            <button className={tab === "handed" ? "is-on" : ""} aria-pressed={tab === "handed"} onClick={() => setTab("handed")}>
+              渡した<span className="count">{handed.length}</span>
+            </button>
           </nav>
-          <main className="kitchen">{column(tab)}</main>
+          <main className="kitchen">
+            {tab === "handed" ? column("handed") : (
+              <>
+                {ready.length > 0 && <h2 className="kcol__title kitchen__sub">できた（渡す）<span className="count">{ready.length}</span></h2>}
+                {ready.length > 0 && <div className="kcol">{ready.map(card)}</div>}
+                <h2 className="kcol__title kitchen__sub">調理中<span className="count">{cooking.length}</span></h2>
+                {cooking.length === 0 ? <p className="kcol__empty">新しい注文はありません</p> : <div className="kcol">{cooking.map(card)}</div>}
+              </>
+            )}
+          </main>
         </>
       )}
 
-      {handing && (
-        <Modal title="お客さんの札と同じですか？" onClose={() => setHanding(null)}>
-          <p className="handover__ticket">{label(handing)}</p>
-          <ul className="handover__lines">
-            {handing.lines.filter((l) => l.price >= 0).map((l) => (
-              <li key={l.itemId}><span>{l.name}</span><b>×{l.qty}</b></li>
-            ))}
-          </ul>
-          <div className="modal__actions modal__actions--stack">
-            <Btn variant="accent" big onClick={() => { set(handing, "handed"); setHanding(null); }}>札を受け取って渡した</Btn>
-            <Btn variant="ghost" onClick={() => setHanding(null)}>やめる</Btn>
-          </div>
-        </Modal>
+      {justHanded && (
+        <div className="toast toast--action" role="status">
+          <span><b>{label(justHanded)}</b> を渡しました</span>
+          <button onClick={() => { set(justHanded, "ready"); setJustHanded(null); }}>戻す</button>
+        </div>
       )}
 
       {soldOutOpen && (
