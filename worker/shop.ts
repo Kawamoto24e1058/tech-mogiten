@@ -291,6 +291,18 @@ export class ShopDO extends DurableObject<Env> {
       case "setSoldOut":
         this.sql.exec("UPDATE menu SET sold_out = ? WHERE id = ?", op.soldOut ? 1 : 0, op.itemId);
         return;
+      case "releaseTicket": {
+        // 札がレジに戻っている＝お客さんに渡し済み。渡したにし忘れた注文を片づける
+        const t = Math.floor(Number(op.ticket));
+        const holders = this.activeOrders().filter((o) => holdsTicket(o) && o.ticket === t);
+        const now = Date.now();
+        for (const o of holders) {
+          if (o.status === "ready") this.sql.exec("UPDATE orders SET status = 'handed', handed_at = ?, ticket_released = 1 WHERE id = ?", now, o.id);
+          else this.sql.exec("UPDATE orders SET ticket_released = 1 WHERE id = ?", o.id);
+        }
+        if (holders.length) this.audit("ticket.reuse", holders[0].id, { ticket: t, orders: holders.map((o) => ({ seq: o.seq, status: o.status })) });
+        return;
+      }
       default:
         throw new HttpError(400, "不明な操作です");
     }

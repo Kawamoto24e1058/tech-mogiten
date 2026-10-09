@@ -175,6 +175,17 @@ check((await kit.until((m) => m.type === "snapshot" && m.data.discounts?.length 
 st = (await req(`${A}/admin/discounts`, { code: "1234", method: "PUT", body: { discounts: [] } })).data;
 check(st.discounts.length === 0, "まとめ買い割引を削除");
 
+// ---- 使用中の札が手元に戻っているとき（渡したの押し忘れ） ----
+const ru = { id: crypto.randomUUID(), ticket: 3, lines: [{ itemId: yakisoba.id, qty: 1 }], received: 2000, createdAt: Date.now() };
+reg.ws.send(JSON.stringify({ type: "op", opId: "u1", op: { kind: "createOrder", order: ru } }));
+await reg.until((m) => m.type === "ack" && m.opId === "u1");
+kit.ws.send(JSON.stringify({ type: "op", opId: "u2", op: { kind: "setStatus", orderId: ru.id, status: "ready" } }));
+await kit.until((m) => m.type === "ack" && m.opId === "u2");
+reg.ws.send(JSON.stringify({ type: "op", opId: "u3", op: { kind: "releaseTicket", ticket: 3 } }));
+check((await reg.until((m) => m.type === "ack" && m.opId === "u3")).ok, "使用中の札を使い直す操作を受け付ける");
+const ruo = (await req(`${A}/history`, { code: "yakisoba" })).data.orders.find((x) => x.id === ru.id);
+check(ruo.status === "handed" && ruo.ticketReleased, "札を持っていた「できた」の注文は渡したになり、札が空く");
+
 // ---- 開店前の準備 ----
 const t1 = { id: crypto.randomUUID(), ticket: 2, lines: [{ itemId: yakisoba.id, qty: 1 }], received: 500, createdAt: Date.now() };
 reg.ws.send(JSON.stringify({ type: "op", opId: "r1", op: { kind: "createOrder", order: t1 } }));

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { changeBreakdown, discountLines, menuColor, holdsTicket, linesTotal, nextTicketAfter, quickAmounts, ticketLabel, yen } from "../../shared/logic";
+import { changeBreakdown, discountLines, menuColor, holdsTicket, linesTotal, quickAmounts, ticketLabel, yen } from "../../shared/logic";
 import { RegisterHistory } from "../components/RegisterHistory";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
 import { IconBack, IconBackspace, IconMinus, IconPlus } from "../components/icons";
@@ -38,16 +38,11 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [received, setReceived] = useState("");
   const [ticketChoice, setTicketChoice] = useState<number | "none" | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]; prevLast: number | null } | null>(null);
+  const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]} | null>(null);
   const [undoing, setUndoing] = useState(false);
   const [undoError, setUndoError] = useState("");
-  // 前に渡した札。次はその次の番号を渡す（札の束の上から順に渡せるように）
-  const lastKey = `lastTicket:${shopId}`;
-  const [lastTicket, setLastTicketRaw] = useState<number | null>(() => load(lastKey, null));
-  const setLastTicket = (t: number | null) => {
-    setLastTicketRaw(t);
-    save(lastKey, t);
-  };
+  // 使用中の札を押したとき（札が手元に戻っている＝渡し済みのはず）の確認
+  const [reuseTicket, setReuseTicket] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
@@ -65,9 +60,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const inUse = useMemo(() => new Set(orders.filter(holdsTicket).map((o) => o.ticket!)), [orders]);
   const ticketCount = shop?.ticketCount ?? 0;
   const freeCount = Math.max(0, ticketCount - [...inUse].filter((t) => t <= ticketCount).length);
-  const latestTicket = [...orders].filter((o) => o.ticket != null).sort((a, b) => b.createdAt - a.createdAt)[0]?.ticket ?? null;
-  const suggested = nextTicketAfter(ticketCount, inUse, lastTicket ?? latestTicket);
-  // 札は毎回押して選ぶ（選び忘れて別の番号のまま会計しないように）。次に渡す札は印をつけて示すだけ
+  // 札は「手元の札の番号を押す」だけ。順番は気にしない。押すまで会計できない（選び忘れ防止）
   const ticket = typeof ticketChoice === "number" ? ticketChoice : null;
   const label = (t: number | null) => ticketLabel(shop?.prefix ?? "", t);
 
@@ -116,8 +109,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       kind: "createOrder",
       order: { id, ticket, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })), received: rec, createdAt: Date.now() },
     });
-    setDone({ ticket: label(ticket), change: rec - total, orderId: id, cart, prevLast: lastTicket });
-    if (ticket != null) setLastTicket(ticket);
+    setDone({ ticket: label(ticket), change: rec - total, orderId: id, cart });
     setUndoError("");
     reset();
   };
@@ -128,7 +120,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   // PC ではキーボードの数字・Backspace・Enter でも入力できるようにする
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keyRef.current = (e) => {
-    if (done || confirmClear || historyOpen || (!wide && step !== "pay")) return;
+    if (done || reuseTicket != null || confirmClear || historyOpen || (!wide && step !== "pay")) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (/^[0-9]$/.test(e.key)) typeKey(e.key);
     else if (e.key === "Backspace") setReceived((r) => r.slice(0, -1));
@@ -139,7 +131,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   // 選んでいる札が見えるように、一覧をそこまでスクロールする
   const ticketListRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    ticketListRef.current?.querySelector(".tk.is-selected, .tk.is-next")?.scrollIntoView({ block: "nearest", inline: "center" });
+    ticketListRef.current?.querySelector(".tk.is-selected")?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [ticket, wide, step, done]);
   useEffect(() => {
     const on = (e: KeyboardEvent) => keyRef.current(e);
@@ -165,7 +157,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         }
       }
       setCart(done.cart);
-      setLastTicket(done.prevLast);
       setStep("pay");
       setDone(null);
     } catch (e) {
@@ -288,18 +279,15 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const ticketButtons = Array.from({ length: ticketCount }, (_, i) => i + 1).map((n) => {
     const used = inUse.has(n);
     const selected = ticket === n;
-    const next = ticketChoice === null && n === suggested;
     return (
       <button
         key={n}
-        className={`tk ${used ? "is-used" : ""} ${selected ? "is-selected" : ""} ${next ? "is-next" : ""}`}
-        disabled={used}
+        className={`tk ${used ? "is-used" : ""} ${selected ? "is-selected" : ""}`}
         aria-pressed={selected}
-        aria-label={`${label(n)}${used ? " 使用中" : selected ? " 選択中" : next ? " 次の札" : ""}`}
-        onClick={() => { buzz(); setTicketChoice(n); }}
+        aria-label={`${label(n)}${used ? " 使用中" : selected ? " 選択中" : ""}`}
+        onClick={() => { buzz(); if (used) setReuseTicket(n); else setTicketChoice(n); }}
       >
         {n}
-        {next && <small className="tk__next">次</small>}
       </button>
     );
   });
@@ -314,7 +302,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     <section className="ticket-panel" aria-label="番号札">
       <h2 className="step-title"><span className="step__no">1</span>札を渡す</h2>
       <div className={`ticket-panel__num ${ticketChoice === null ? "is-unset" : ticket == null ? "is-none" : ""}`} aria-live="polite">{ticketChoice === null ? "札を押してください" : ticketText}</div>
-      <p className="ticket-panel__free">空き {freeCount}枚 ・ 手に取った札を押す</p>
+      <p className="ticket-panel__free">手元の札の番号を押す（順番は自由）</p>
       <div className="tk-grid" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
       {noTicketButton}
     </section>
@@ -349,6 +337,24 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "① 札を押してください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : `札 ${ticketText} で会計を確定`}
       </Btn>
     </section>
+  );
+
+  // 使用中の札が手元にある＝前のお客さんに渡したのに「渡した」を押し忘れている、が多い
+  const holder = reuseTicket == null ? undefined : orders.find((o) => holdsTicket(o) && o.ticket === reuseTicket);
+  const reuseModal = reuseTicket != null && (
+    <Modal title={`札 ${label(reuseTicket)} はまだ使用中です`} onClose={() => setReuseTicket(null)}>
+      {holder && (
+        <p className="modal__summary">
+          前の注文：{holder.lines.filter((l) => l.price >= 0).map((l) => `${l.name}×${l.qty}`).join("、")}（{holder.status === "ready" ? "できた・渡していない" : "調理中"}）
+        </p>
+      )}
+      <p>この札が手元にあるなら、前のお客さんにはもう渡しています。厨房で「渡した」を押し忘れているだけなので、このまま使えます。</p>
+      {holder?.status === "cooking" && <Banner kind="warn">前の注文はまだ調理中です。本当に札が手元にあるか確かめてください。</Banner>}
+      <div className="modal__actions modal__actions--stack">
+        <Btn variant="accent" big onClick={() => { conn.send({ kind: "releaseTicket", ticket: reuseTicket }); setTicketChoice(reuseTicket); setReuseTicket(null); }}>札は手元にある。この札を使う</Btn>
+        <Btn variant="ghost" onClick={() => setReuseTicket(null)}>やめる（別の札にする）</Btn>
+      </div>
+    </Modal>
   );
 
   const clearModal = confirmClear && (
@@ -407,6 +413,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
           </aside>
         </main>
         {clearModal}
+        {reuseModal}
         {historyModal}
       </Page>
     );
@@ -443,6 +450,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         </main>
       )}
       {clearModal}
+      {reuseModal}
       {historyModal}
     </Page>
   );

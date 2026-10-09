@@ -23,7 +23,7 @@ const STATUS_JA: Record<string, string> = { cooking: "調理中", ready: "でき
 const ACTION_JA: Record<string, string> = {
   cancel: "キャンセル", "ticket.change": "札の変更", "ticket.release": "札を空きに戻す", "menu.add": "メニュー追加",
   "menu.edit": "メニュー変更", "menu.delete": "メニュー削除", settings: "店舗設定の変更", codes: "合言葉・PINの変更",
-  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", reset: "練習データの消去", discounts: "まとめ買い割引の変更",
+  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", "ticket.reuse": "レジで使用中の札を使い直し", reset: "練習データの消去", discounts: "まとめ買い割引の変更",
 };
 
 type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;

@@ -90,7 +90,9 @@ export interface NewOrderInput {
 export type Op =
   | { kind: "createOrder"; order: NewOrderInput }
   | { kind: "setStatus"; orderId: string; status: "cooking" | "ready" | "handed" }
-  | { kind: "setSoldOut"; itemId: string; soldOut: boolean };
+  | { kind: "setSoldOut"; itemId: string; soldOut: boolean }
+  /** 手元に戻っている札をもう一度使う。その札を持っていた注文は、できた→渡した にし、札を空きにする */
+  | { kind: "releaseTicket"; ticket: number };
 
 export type ClientMessage = { type: "op"; opId: string; op: Op } | { type: "ping" };
 

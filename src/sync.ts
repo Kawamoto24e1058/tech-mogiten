@@ -227,6 +227,16 @@ export function viewOrders(snapshot: ShopSnapshot | null, outbox: Pending[]): (O
       };
       list.push(o);
       byId.set(o.id, o);
+    } else if (op.kind === "releaseTicket") {
+      for (const o of list) {
+        if (o.ticket !== op.ticket || o.ticketReleased || (o.status !== "cooking" && o.status !== "ready")) continue;
+        if (o.status === "ready") {
+          o.status = "handed";
+          o.handedAt = Date.now();
+        }
+        o.ticketReleased = true;
+        o.pending = true;
+      }
     } else if (op.kind === "setStatus") {
       const o = byId.get(op.orderId);
       if (o && o.status !== "cancelled") {
