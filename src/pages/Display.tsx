@@ -32,7 +32,7 @@ function speak(ticket: string) {
 export function Display({ shopId }: { shopId: string }) {
   const { state } = useConnection(shopId, "display", null);
   const data = state.display;
-  const now = useNow(5000);
+  const now = useNow(2000);
   // 音はブラウザの決まりで、画面を1回押してからでないと鳴らせない。毎回「音なし」から始める
   const [sound, setSound] = useState<Sound>("off");
   // 昼（明るい場所）は白地に黒文字のほうが映り込みに強く読みやすい。営業は日中なので昼を基本にする
@@ -59,6 +59,14 @@ export function Display({ shopId }: { shopId: string }) {
   const [latest, ...others] = fresh;
   const cooking = data?.cooking ?? [];
   const menu = data?.menu ?? [];
+  // 下の帯の案内を、ゆっくり入れ替える（並んでいる人に順番に伝える）
+  const notes = [
+    "番号札をお持ちの方は、受け取り口へお越しください",
+    ...(data?.deals ?? []).map((d) => `おトク：${d}`),
+    ...(data?.waitMin != null ? [`ただいま約${data.waitMin}分でお渡ししています`] : []),
+    "メニューと値段は右をご覧ください",
+  ];
+  const note = notes[Math.floor(now / 8000) % notes.length];
   const clock = new Date(t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" });
 
   return (
@@ -78,12 +86,12 @@ export function Display({ shopId }: { shopId: string }) {
         <section className="dsp__ready" aria-live="polite" aria-label="お呼び出し中の番号">
           <h1 className="dsp__label">お呼び出し中 <span lang="en">Now Serving</span></h1>
           {latest ? (
-            <div className="dsp__spot">
+            <div className="dsp__spot" key={latest.ticket}>
               <span className="dsp__spot-tag">ただいまお呼び出し</span>
               <span className="dsp__spot-num">{latest.ticket}</span>
             </div>
           ) : (
-            <p className="dsp__empty">ただいまお呼び出し中の番号はありません</p>
+            <p className="dsp__empty"><span className="dsp__breath" aria-hidden />できあがり次第、ここでお呼びします</p>
           )}
           {others.length > 0 && (
             <ul className="dsp__grid">
@@ -125,7 +133,7 @@ export function Display({ shopId }: { shopId: string }) {
       </main>
 
       <footer className="dsp__foot">
-        <span>番号札をお持ちの方は、受け取り口へお越しください</span>
+        <span className="dsp__note" key={note}>{note}</span>
         {state.status !== "online" && <span className="dsp__offline">接続中…</span>}
         <button className="dsp__sound dsp__theme" onClick={switchTheme} aria-label={`表示を${theme === "day" ? "夜（暗い場所）" : "昼（明るい場所）"}向けにする`}>
           {theme === "day" ? "昼モード" : "夜モード"}<small>（押すと切り替え）</small>

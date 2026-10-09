@@ -883,3 +883,36 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .dsp--day .dsp__sound small { color: #27272a; }
 .dsp__theme { margin-left: auto; }
 .dsp__theme + .dsp__sound { margin-left: 0; }
+
+/* ---------- 呼び出し表示の動き（邪魔にならない程度。動きを減らす設定の端末では止まる） ----------
+ * 新しく呼んだとき: 番号がふわっと大きくなって出て、枠から光の輪が3回だけ広がる
+ * ふだん: 上の帯の下を光がゆっくり流れる / 案内文がゆっくり入れ替わる / 待っている間は点がゆっくり呼吸する */
+@keyframes dsp-pop { 0% { transform: scale(0.86); opacity: 0; } 60% { transform: scale(1.02); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes dsp-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 100% { box-shadow: 0 0 0 clamp(18px, 2.4vw, 36px) color-mix(in srgb, var(--accent) 0%, transparent); } }
+@keyframes dsp-rise { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes dsp-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes dsp-sweep { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
+@keyframes dsp-breath { 0%, 100% { transform: scale(0.7); opacity: 0.35; } 50% { transform: scale(1); opacity: 1; } }
+
+.dsp__spot { position: relative; animation: dsp-pop 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.dsp__spot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; animation: dsp-ring 1.4s ease-out 0.4s 3; }
+.dsp__num { animation: dsp-rise 500ms ease-out both; }
+.dsp__cooking li, .dsp__long li { animation: dsp-fade 500ms ease-out both; }
+.dsp__note { display: inline-block; animation: dsp-fade 700ms ease-out both; }
+
+.dsp__head { position: relative; overflow: hidden; }
+.dsp__head::after {
+  content: ""; position: absolute; left: 0; bottom: 0; width: 25%; height: 4px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: dsp-sweep 9s linear infinite;
+}
+.dsp__breath { display: inline-block; width: 0.6em; height: 0.6em; margin-right: 0.6em; border-radius: 50%; background: var(--accent); vertical-align: 0.1em; animation: dsp-breath 3s ease-in-out infinite; }
+/* 低い画面（720p など）でも、下の番号が隠れないよう高さでも大きさを抑える。光の輪が切れないよう余白をとる */
+.dsp__spot-num { font-size: clamp(4rem, min(15vw, 24vh), 14rem); }
+.dsp__num { font-size: clamp(2.2rem, min(6vw, 9vh), 5.4rem); }
+@media (min-width: 861px) { .dsp__ready { padding: 22px; margin: -22px; } }
+@keyframes dsp-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 100% { box-shadow: 0 0 0 20px color-mix(in srgb, var(--accent) 0%, transparent); } }
+.dsp__num { white-space: nowrap; font-size: clamp(2rem, min(5vw, 8vh), 5.4rem); }
+.dsp__grid { grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 15vw, 240px), 1fr)); }
+.dsp__spot-num { font-size: clamp(4rem, min(15vw, 20vh), 14rem); }
+@media (max-height: 800px) { .dsp__spot { padding-bottom: 8px; } .dsp__label { margin-bottom: 8px; } }
