@@ -1,6 +1,6 @@
 // アプリの画面一式を端末に保存し、電波がなくても開けるようにする。
 // API（/api/）は保存しない。
-const CACHE = "mogiten-v1";
+const CACHE = "mogiten-v2";
 
 async function precache() {
   const cache = await caches.open(CACHE);
@@ -9,7 +9,8 @@ async function precache() {
   const html = await res.clone().text();
   await cache.put("/", res);
   const assets = [...html.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map((m) => m[1]);
-  await Promise.all(assets.map((a) => cache.add(a).catch(() => {})));
+  const files = ["/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png"];
+  await Promise.all([...assets, ...files].map((a) => cache.add(a).catch(() => {})));
 }
 
 self.addEventListener("install", (e) => {

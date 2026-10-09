@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ShopPublic } from "../../shared/types";
 import { accentStyle } from "../components/ui";
 import { IconNext } from "../components/icons";
+import { canPromptInstall, isIOS, isStandalone, onInstallChange, promptInstall } from "../install";
 import { api, load, save } from "../util";
 
 const SCREEN_NAME: Record<string, string> = { register: "レジ", kitchen: "厨房", display: "呼び出し表示", admin: "管理" };
@@ -56,8 +57,39 @@ export function Home() {
           </section>
         ))}
 
+        <InstallCard />
+
         <a className="home__master" href="/admin">2店舗の売上をまとめて見る（テック部）</a>
       </main>
     </div>
+  );
+}
+
+/** この端末のホーム画面（PCはアプリ一覧）に追加する案内。追加済みなら出さない */
+function InstallCard() {
+  const canPrompt = useSyncExternalStore(onInstallChange, canPromptInstall);
+  const [iosHelp, setIosHelp] = useState(false);
+  if (isStandalone()) return null;
+  const ios = isIOS();
+  if (!canPrompt && !ios) return null;
+  return (
+    <section className="install" aria-label="ホーム画面に追加">
+      <div className="install__text">
+        <b>ホーム画面に追加</b>
+        <span>アイコンから、前回の担当の画面がすぐ開きます。電波が弱くても開けます。</span>
+      </div>
+      {canPrompt ? (
+        <button className="btn btn--accent" onClick={() => void promptInstall()}>追加する</button>
+      ) : (
+        <button className="btn" onClick={() => setIosHelp((v) => !v)} aria-expanded={iosHelp}>やり方</button>
+      )}
+      {iosHelp && (
+        <ol className="install__steps">
+          <li>Safari の下の <b>共有ボタン</b>（四角から矢印が出ているもの）を押す</li>
+          <li><b>「ホーム画面に追加」</b>を押す（見つからなければ下にスクロール）</li>
+          <li>右上の <b>「追加」</b>を押す</li>
+        </ol>
+      )}
+    </section>
   );
 }
