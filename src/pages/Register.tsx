@@ -37,7 +37,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [step, setStep] = useState<"order" | "pay">("order");
   const [received, setReceived] = useState("");
   const [ticketChoice, setTicketChoice] = useState<number | "none" | null>(null);
-  const [pickTicket, setPickTicket] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]; prevLast: number | null } | null>(null);
   const [undoing, setUndoing] = useState(false);
@@ -128,7 +127,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   // PC ではキーボードの数字・Backspace・Enter でも入力できるようにする
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keyRef.current = (e) => {
-    if (done || pickTicket || confirmClear || historyOpen || (!wide && step !== "pay")) return;
+    if (done || confirmClear || historyOpen || (!wide && step !== "pay")) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (/^[0-9]$/.test(e.key)) typeKey(e.key);
     else if (e.key === "Backspace") setReceived((r) => r.slice(0, -1));
@@ -136,6 +135,11 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     else return;
     e.preventDefault();
   };
+  // 選んでいる札が見えるように、一覧をそこまでスクロールする
+  const ticketListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ticketListRef.current?.querySelector(".tk.is-selected")?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [ticket, wide, step, done]);
   useEffect(() => {
     const on = (e: KeyboardEvent) => keyRef.current(e);
     window.addEventListener("keydown", on);
@@ -279,14 +283,37 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   const ticketText = ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "空きなし";
 
-  /** ① 札（左）。束のいちばん上の札を渡す */
+  /** 札をずらっと並べる。手に取った札の番号を押せばよい（何も押さなければ、前の札の次の番号） */
+  const ticketButtons = Array.from({ length: ticketCount }, (_, i) => i + 1).map((n) => {
+    const used = inUse.has(n);
+    const selected = ticket === n;
+    return (
+      <button
+        key={n}
+        className={`tk ${used ? "is-used" : ""} ${selected ? "is-selected" : ""}`}
+        disabled={used}
+        aria-pressed={selected}
+        aria-label={`${label(n)}${used ? " 使用中" : selected ? " 選択中" : ""}`}
+        onClick={() => { buzz(); setTicketChoice(n === suggested ? null : n); }}
+      >
+        {n}
+      </button>
+    );
+  });
+  const noTicketButton = (
+    <button className={`tk tk--none ${ticketChoice === "none" ? "is-selected" : ""}`} aria-pressed={ticketChoice === "none"} onClick={() => { buzz(); setTicketChoice(ticketChoice === "none" ? null : "none"); }}>
+      札なし
+    </button>
+  );
+
+  /** ① 札（左） */
   const ticketPanel = (
     <section className="ticket-panel" aria-label="番号札">
       <h2 className="step-title"><span className="step__no">1</span>札を渡す</h2>
       <div className={`ticket-panel__num ${ticket == null ? "is-none" : ""}`}>{ticketText}</div>
-      <p className="hint">{ticketChoice == null ? "束のいちばん上の札" : "選んだ札"}</p>
-      <Btn onClick={() => setPickTicket(true)}>別の札にする</Btn>
-      <p className="ticket-panel__free">空き {freeCount}枚</p>
+      <p className="ticket-panel__free">空き {freeCount}枚 ・ 手に取った札を押す</p>
+      <div className="tk-grid" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
+      {noTicketButton}
     </section>
   );
 
@@ -319,32 +346,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "札を選んでください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : "会計を確定"}
       </Btn>
     </section>
-  );
-
-  const ticketModal = pickTicket && (
-    <Modal title="渡す札を選ぶ" onClose={() => setPickTicket(false)}>
-      <p className="hint">灰色の番号は使用中です。</p>
-      <div className="ticket-grid">
-        {Array.from({ length: ticketCount }, (_, i) => i + 1).map((n) => {
-          const used = inUse.has(n);
-          return (
-            <button
-              key={n}
-              className={`ticket ${used ? "is-used" : ""} ${ticket === n ? "is-selected" : ""}`}
-              disabled={used}
-              onClick={() => { setTicketChoice(n); setPickTicket(false); }}
-              aria-label={`${label(n)}${used ? " 使用中" : ""}`}
-            >
-              {n}
-            </button>
-          );
-        })}
-      </div>
-      <div className="modal__actions">
-        <Btn variant="ghost" onClick={() => { setTicketChoice("none"); setPickTicket(false); }}>札なしで会計</Btn>
-        <Btn onClick={() => { setTicketChoice(null); setPickTicket(false); }}>おすすめ（{label(suggested)}）に戻す</Btn>
-      </div>
-    </Modal>
   );
 
   const clearModal = confirmClear && (
@@ -402,7 +403,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
             {pay}
           </aside>
         </main>
-        {ticketModal}
         {clearModal}
         {historyModal}
       </Page>
@@ -417,9 +417,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         <>
           <main className="register">
             <div className="ticket-bar">
-              <span className="ticket-bar__label">渡す札</span>
-              <b className="ticket-bar__num">{ticketText}</b>
-              <button className="link" onClick={() => setPickTicket(true)}>別の札にする</button>
+              <span className="ticket-bar__label">渡す札 <b className="ticket-bar__num">{ticketText}</b></span>
+              <div className="tk-strip" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}{noTicketButton}</div>
             </div>
             {menuGrid}
           </main>
@@ -440,7 +439,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
           {pay}
         </main>
       )}
-      {ticketModal}
       {clearModal}
       {historyModal}
     </Page>
