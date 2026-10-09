@@ -43,8 +43,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [undoError, setUndoError] = useState("");
   // 使用中の札を押したとき（札が手元に戻っている＝渡し済みのはず）の確認
   const [reuseTicket, setReuseTicket] = useState<number | null>(null);
-  // 札を選び直している途中か（「札を変える」を押したとき）
-  const [changingTicket, setChangingTicket] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
@@ -101,7 +99,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   const ticketOk = ticketChoice !== null;
   /** お客さんごとに、まず札を選ぶ画面を出す。選んだら注文の画面へ */
-  const choosingTicket = ticketChoice === null || changingTicket;
+  const choosingTicket = ticketChoice === null;
   const canConfirm = lines.length > 0 && total >= 0 && received !== "" && receivedNum >= total && ticketOk;
 
   /** 会計を確定する */
@@ -289,14 +287,14 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         className={`tk ${used ? "is-used" : ""} ${selected ? "is-selected" : ""}`}
         aria-pressed={selected}
         aria-label={`${label(n)}${used ? " 使用中" : selected ? " 選択中" : ""}`}
-        onClick={() => { buzz(); if (used) setReuseTicket(n); else { setTicketChoice(n); setChangingTicket(false); } }}
+        onClick={() => { buzz(); if (used) setReuseTicket(n); else { setTicketChoice(n); } }}
       >
         {n}
       </button>
     );
   });
   const noTicketButton = (
-    <button className={`tk tk--none ${ticketChoice === "none" ? "is-selected" : ""}`} aria-pressed={ticketChoice === "none"} onClick={() => { buzz(); setTicketChoice("none"); setChangingTicket(false); }}>
+    <button className={`tk tk--none ${ticketChoice === "none" ? "is-selected" : ""}`} aria-pressed={ticketChoice === "none"} onClick={() => { buzz(); setTicketChoice("none"); }}>
       札なし
     </button>
   );
@@ -311,17 +309,18 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       <div className="tk-grid tk-grid--pick" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
       <div className="ticket-pick__foot">
         {noTicketButton}
-        {changingTicket && ticketChoice !== null && <Btn onClick={() => setChangingTicket(false)}>札を変えずに戻る（{ticketText}）</Btn>}
       </div>
     </main>
   );
 
-  /** ① 札（左）。選んだ札を大きく出し、間違えたら変えられる */
+  /** ① 札（左）。選んだ札を大きく出し、一覧からそのまま押し直せる */
   const ticketPanel = (
     <section className="ticket-panel" aria-label="番号札">
       <h2 className="step-title"><span className="step__no">1</span>渡す札</h2>
       <div className={`ticket-panel__num ${ticket == null ? "is-none" : ""}`} aria-live="polite">{ticketText}</div>
-      <Btn onClick={() => setChangingTicket(true)}>札を変える</Btn>
+      <p className="ticket-panel__free">間違えたら、別の番号を押す</p>
+      <div className="tk-grid" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
+      {noTicketButton}
     </section>
   );
 
@@ -368,7 +367,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       <p>この札が手元にあるなら、前のお客さんにはもう渡しています。厨房で「渡した」を押し忘れているだけなので、このまま使えます。</p>
       {holder?.status === "cooking" && <Banner kind="warn">前の注文はまだ調理中です。本当に札が手元にあるか確かめてください。</Banner>}
       <div className="modal__actions modal__actions--stack">
-        <Btn variant="accent" big onClick={() => { conn.send({ kind: "releaseTicket", ticket: reuseTicket }); setTicketChoice(reuseTicket); setChangingTicket(false); setReuseTicket(null); }}>札は手元にある。この札を使う</Btn>
+        <Btn variant="accent" big onClick={() => { conn.send({ kind: "releaseTicket", ticket: reuseTicket }); setTicketChoice(reuseTicket); setReuseTicket(null); }}>札は手元にある。この札を使う</Btn>
         <Btn variant="ghost" onClick={() => setReuseTicket(null)}>やめる（別の札にする）</Btn>
       </div>
     </Modal>
@@ -457,7 +456,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
           <main className="register">
             <div className="ticket-bar">
               <span className="ticket-bar__label">渡す札 <b className="ticket-bar__num">{ticketText}</b></span>
-              <button className="link" onClick={() => setChangingTicket(true)}>札を変える</button>
+              <div className="tk-strip" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}{noTicketButton}</div>
             </div>
             {menuGrid}
           </main>

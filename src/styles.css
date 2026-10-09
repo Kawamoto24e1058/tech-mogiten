@@ -762,3 +762,8 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .ticket-bar .link { margin-left: auto; }
 .ticket-bar__num { font-size: 1.6rem; }
 .tk-grid--pick { flex: 0 0 auto; }
+/* ② 以降も左に札の一覧を出す（押し直せる） */
+.register-wide--flow { grid-template-columns: clamp(220px, 22vw, 320px) minmax(0, 1fr) 380px; }
+@media (max-width: 1099px) { .register-wide--flow { grid-template-columns: 200px minmax(0, 1fr) 320px; } }
+.ticket-panel__num { font-size: 2.4rem; padding: 12px 8px 10px; }
+.ticket-bar { display: grid; gap: 8px; }
