@@ -43,6 +43,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [undoError, setUndoError] = useState("");
   // 使用中の札を押したとき（札が手元に戻っている＝渡し済みのはず）の確認
   const [reuseTicket, setReuseTicket] = useState<number | null>(null);
+  // 札を選び直している途中か（「札を変える」を押したとき）
+  const [changingTicket, setChangingTicket] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
@@ -98,6 +100,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   };
 
   const ticketOk = ticketChoice !== null;
+  /** お客さんごとに、まず札を選ぶ画面を出す。選んだら注文の画面へ */
+  const choosingTicket = ticketChoice === null || changingTicket;
   const canConfirm = lines.length > 0 && total >= 0 && received !== "" && receivedNum >= total && ticketOk;
 
   /** 会計を確定する */
@@ -120,7 +124,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   // PC ではキーボードの数字・Backspace・Enter でも入力できるようにする
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keyRef.current = (e) => {
-    if (done || reuseTicket != null || confirmClear || historyOpen || (!wide && step !== "pay")) return;
+    if (done || choosingTicket || reuseTicket != null || confirmClear || historyOpen || (!wide && step !== "pay")) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (/^[0-9]$/.test(e.key)) typeKey(e.key);
     else if (e.key === "Backspace") setReceived((r) => r.slice(0, -1));
@@ -285,26 +289,39 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         className={`tk ${used ? "is-used" : ""} ${selected ? "is-selected" : ""}`}
         aria-pressed={selected}
         aria-label={`${label(n)}${used ? " 使用中" : selected ? " 選択中" : ""}`}
-        onClick={() => { buzz(); if (used) setReuseTicket(n); else setTicketChoice(n); }}
+        onClick={() => { buzz(); if (used) setReuseTicket(n); else { setTicketChoice(n); setChangingTicket(false); } }}
       >
         {n}
       </button>
     );
   });
   const noTicketButton = (
-    <button className={`tk tk--none ${ticketChoice === "none" ? "is-selected" : ""}`} aria-pressed={ticketChoice === "none"} onClick={() => { buzz(); setTicketChoice(ticketChoice === "none" ? null : "none"); }}>
+    <button className={`tk tk--none ${ticketChoice === "none" ? "is-selected" : ""}`} aria-pressed={ticketChoice === "none"} onClick={() => { buzz(); setTicketChoice("none"); setChangingTicket(false); }}>
       札なし
     </button>
   );
 
-  /** ① 札（左） */
+  /** ① 札を選ぶ画面（お客さんごとに最初に出る） */
+  const ticketPick = (
+    <main className="ticket-pick">
+      <div className="ticket-pick__head">
+        <h1 className="ticket-pick__title"><span className="step__no">1</span>渡す札の番号を押してください</h1>
+        <p className="hint">箱から札を1枚取って、その番号を押します（順番は自由）。押すと注文の画面に進みます。</p>
+      </div>
+      <div className="tk-grid tk-grid--pick" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
+      <div className="ticket-pick__foot">
+        {noTicketButton}
+        {changingTicket && ticketChoice !== null && <Btn onClick={() => setChangingTicket(false)}>札を変えずに戻る（{ticketText}）</Btn>}
+      </div>
+    </main>
+  );
+
+  /** ① 札（左）。選んだ札を大きく出し、間違えたら変えられる */
   const ticketPanel = (
     <section className="ticket-panel" aria-label="番号札">
-      <h2 className="step-title"><span className="step__no">1</span>札を渡す</h2>
-      <div className={`ticket-panel__num ${ticketChoice === null ? "is-unset" : ticket == null ? "is-none" : ""}`} aria-live="polite">{ticketChoice === null ? "札を押してください" : ticketText}</div>
-      <p className="ticket-panel__free">手元の札の番号を押す（順番は自由）</p>
-      <div className="tk-grid" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
-      {noTicketButton}
+      <h2 className="step-title"><span className="step__no">1</span>渡す札</h2>
+      <div className={`ticket-panel__num ${ticket == null ? "is-none" : ""}`} aria-live="polite">{ticketText}</div>
+      <Btn onClick={() => setChangingTicket(true)}>札を変える</Btn>
     </section>
   );
 
@@ -351,7 +368,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       <p>この札が手元にあるなら、前のお客さんにはもう渡しています。厨房で「渡した」を押し忘れているだけなので、このまま使えます。</p>
       {holder?.status === "cooking" && <Banner kind="warn">前の注文はまだ調理中です。本当に札が手元にあるか確かめてください。</Banner>}
       <div className="modal__actions modal__actions--stack">
-        <Btn variant="accent" big onClick={() => { conn.send({ kind: "releaseTicket", ticket: reuseTicket }); setTicketChoice(reuseTicket); setReuseTicket(null); }}>札は手元にある。この札を使う</Btn>
+        <Btn variant="accent" big onClick={() => { conn.send({ kind: "releaseTicket", ticket: reuseTicket }); setTicketChoice(reuseTicket); setChangingTicket(false); setReuseTicket(null); }}>札は手元にある。この札を使う</Btn>
         <Btn variant="ghost" onClick={() => setReuseTicket(null)}>やめる（別の札にする）</Btn>
       </div>
     </Modal>
@@ -366,6 +383,18 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       </div>
     </Modal>
   );
+
+  if (choosingTicket) {
+    return (
+      <Page shop={shop} className="page--work">
+        {appbar}
+        {banners}
+        {ticketPick}
+        {reuseModal}
+        {historyModal}
+      </Page>
+    );
+  }
 
   if (wide) {
     return (
@@ -427,8 +456,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         <>
           <main className="register">
             <div className="ticket-bar">
-              <span className="ticket-bar__label">渡す札 <b className={`ticket-bar__num ${ticketChoice === null ? "is-unset" : ""}`}>{ticketChoice === null ? "札を押してください" : ticketText}</b></span>
-              <div className="tk-strip" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}{noTicketButton}</div>
+              <span className="ticket-bar__label">渡す札 <b className="ticket-bar__num">{ticketText}</b></span>
+              <button className="link" onClick={() => setChangingTicket(true)}>札を変える</button>
             </div>
             {menuGrid}
           </main>
