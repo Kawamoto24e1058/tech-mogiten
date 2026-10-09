@@ -1,9 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import {
-  buildLines, businessDay, holdsTicket, linesTotal, ordersCsv, summarize, ticketLabel,
+  businessDay, holdsTicket, linesTotal, ordersCsv, priceLines, summarize, ticketLabel,
 } from "../shared/logic";
 import type {
-  ClientMessage, Closing, DisplaySnapshot, MenuItem, NewOrderInput, Op, Order, OrderStatus,
+  ClientMessage, Closing, DiscountRule, DisplaySnapshot, MenuItem, NewOrderInput, Op, Order, OrderStatus,
   Role, ServerMessage, ShopPublic, ShopSnapshot,
 } from "../shared/types";
 import { DENOMINATIONS, MENU_COLORS, STAFF_CANCEL_WINDOW_MS } from "../shared/types";
@@ -115,6 +115,14 @@ export class ShopDO extends DurableObject<Env> {
   private set(key: string, value: string | null) {
     if (value == null) this.sql.exec("DELETE FROM kv WHERE key = ?", key);
     else this.sql.exec("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value);
+  }
+
+  private discounts(): DiscountRule[] {
+    try {
+      return JSON.parse(this.get("discounts") ?? "[]") as DiscountRule[];
+    } catch {
+      return [];
+    }
   }
 
   private async ensureShopId(id: string) {
@@ -237,6 +245,7 @@ export class ShopDO extends DurableObject<Env> {
     return {
       shop: this.shopPublic(),
       menu: this.menu(),
+      discounts: this.discounts(),
       orders: this.activeOrders(),
       registerCount: this.ctx.getWebSockets("register").length,
       serverTime: Date.now(),
@@ -291,7 +300,7 @@ export class ShopDO extends DurableObject<Env> {
   private createOrder(input: NewOrderInput): string | undefined {
     if (typeof input?.id !== "string" || input.id.length < 8 || input.id.length > 64) throw new HttpError(400, "注文IDが不正です");
     if (this.order(input.id)) return; // 再送された注文は無視する
-    const lines = buildLines(this.menu(), Array.isArray(input.lines) ? input.lines : []);
+    const lines = priceLines(this.menu(), this.discounts(), Array.isArray(input.lines) ? input.lines : []);
     if (lines.length === 0) throw new HttpError(400, "注文が空です");
     const total = linesTotal(lines);
     if (total < 0) throw new HttpError(400, "合計がマイナスです。割引の数を確認してください");
@@ -419,6 +428,7 @@ export class ShopDO extends DurableObject<Env> {
       shop,
       hasAdminPin: this.get("adminHash") != null,
       menu: this.menu(),
+      discounts: this.discounts(),
       orders,
       tickets: this.activeOrders().filter(holdsTicket).map((o) => ({ ticket: o.ticket!, orderId: o.id, seq: o.seq, status: o.status })),
       days,
@@ -551,6 +561,28 @@ export class ShopDO extends DurableObject<Env> {
         throw new HttpError(400, "合言葉と管理PINは別のものにしてください");
       }
       this.audit("codes", null, { staffCode: b.staffCode != null, adminPin: b.adminPin != null });
+      this.broadcast();
+      return json(this.adminState(day));
+    }
+
+    if (p === "/discounts" && m === "PUT") {
+      const b = await this.body<{ discounts: DiscountRule[] }>(req);
+      if (!Array.isArray(b.discounts) || b.discounts.length > 20) throw new HttpError(400, "割引は20件までです");
+      const ids = new Set(this.menu().map((x) => x.id));
+      const rules = b.discounts.map((r): DiscountRule => {
+        const name = String(r?.name ?? "").trim().slice(0, 30);
+        const every = Math.floor(Number(r?.every));
+        const off = Math.floor(Number(r?.off));
+        const itemIds = Array.isArray(r?.itemIds) ? [...new Set(r.itemIds.map(String))].filter((id) => ids.has(id)) : [];
+        if (!name) throw new HttpError(400, "割引の名前を入力してください");
+        if (!(every >= 1 && every <= 99)) throw new HttpError(400, "「何個ごと」は1〜99にしてください");
+        if (!(off >= 1 && off <= 100000)) throw new HttpError(400, "引く金額は1円以上にしてください");
+        if (itemIds.length === 0) throw new HttpError(400, `「${name}」の対象の商品を選んでください`);
+        const id = typeof r?.id === "string" && /^[\w-]{1,64}$/.test(r.id) ? r.id : crypto.randomUUID();
+        return { id, name, itemIds, every, off, enabled: r?.enabled !== false };
+      });
+      this.set("discounts", JSON.stringify(rules));
+      this.audit("discounts", null, rules);
       this.broadcast();
       return json(this.adminState(day));
     }

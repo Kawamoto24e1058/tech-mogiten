@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { DisplaySnapshot, Op, Order, ServerMessage, ShopSnapshot } from "../shared/types";
-import { buildLines, linesTotal } from "../shared/logic";
+import { linesTotal, priceLines } from "../shared/logic";
 import { load, save, uuid } from "./util";
 
 export type ConnStatus = "connecting" | "online" | "offline" | "auth";
@@ -210,7 +210,7 @@ export function viewOrders(snapshot: ShopSnapshot | null, outbox: Pending[]): (O
   let tempSeq = 0;
   for (const { op } of outbox) {
     if (op.kind === "createOrder" && !byId.has(op.order.id)) {
-      const lines = buildLines(snapshot.menu, op.order.lines);
+      const lines = priceLines(snapshot.menu, snapshot.discounts ?? [], op.order.lines);
       const total = linesTotal(lines);
       const o = {
         id: op.order.id, seq: --tempSeq, ticket: op.order.ticket, status: "cooking" as const, lines, total,

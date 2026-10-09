@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { changeBreakdown, menuColor, holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
+import { changeBreakdown, discountLines, menuColor, holdsTicket, linesTotal, nextFreeTicket, ticketLabel, yen } from "../../shared/logic";
 import { RegisterHistory } from "../components/RegisterHistory";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
 import { IconBack, IconBackspace, IconMinus, IconPlus } from "../components/icons";
@@ -68,7 +68,10 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       return m ? { ...c, name: m.name, price: m.price, soldOut: m.soldOut, stock: m.stock } : null;
     })
     .filter((x): x is NonNullable<typeof x> => x != null && x.qty > 0);
-  const total = linesTotal(lines);
+  // まとめ買い割引（管理画面で設定）は自動でつける。サーバーでも同じ計算をする
+  const autoDiscounts = discountLines(lines, snapshot?.discounts ?? []);
+  const total = linesTotal(lines) + linesTotal(autoDiscounts);
+  const discountText = autoDiscounts.map((d) => `${d.name}${d.qty > 1 ? `×${d.qty}` : ""} −${yen(-d.price * d.qty)}`).join("、");
   const receivedNum = Number(received || 0);
   const shortBy = total - receivedNum;
   const change = receivedNum - total;
@@ -312,6 +315,13 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
                       <span className="order-list__sub">{l.price < 0 ? `−${yen(-l.price * l.qty)}` : yen(l.price * l.qty)}</span>
                     </li>
                   ))}
+                  {autoDiscounts.map((d) => (
+                    <li key={d.itemId} className="order-list__discount">
+                      <span className="order-list__name">{d.name}{d.qty > 1 && ` ×${d.qty}`}</span>
+                      <span />
+                      <span className="order-list__sub">−{yen(-d.price * d.qty)}</span>
+                    </li>
+                  ))}
                 </ul>
               )}
             </section>
@@ -336,6 +346,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
             <div className="bottom-bar__sum">
               <span className="bottom-bar__count">{itemCount ? `${itemCount}点` : "未選択"}</span>
               <span className="bottom-bar__total" aria-live="polite"><Money value={total} /></span>
+              {discountText && <span className="bottom-bar__discount">{discountText}</span>}
               {lines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
             </div>
             <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ</Btn>
@@ -344,7 +355,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       ) : (
         <main className="register register--pay">
           <button className="back-link" onClick={() => setStep("order")}><IconBack size={20} />注文に戻る</button>
-          <p className="pay__items">{lines.map((l) => `${l.name}×${l.qty}`).join("、")}</p>
+          <p className="pay__items">{lines.map((l) => `${l.name}×${l.qty}`).join("、")}{discountText && <span className="pay__discount">{discountText}</span>}</p>
           {pay}
         </main>
       )}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DaySummary, MenuItem, Order, ShopPublic } from "../../shared/types";
+import type { DaySummary, DiscountRule, MenuItem, Order, ShopPublic } from "../../shared/types";
 import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "../../shared/types";
 import { menuColor, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
@@ -10,6 +10,7 @@ interface AdminState {
   shop: ShopPublic;
   hasAdminPin: boolean;
   menu: MenuItem[];
+  discounts: DiscountRule[];
   orders: Order[];
   tickets: { ticket: number; orderId: string; seq: number; status: string }[];
   days: string[];
@@ -22,7 +23,7 @@ const STATUS_JA: Record<string, string> = { cooking: "調理中", ready: "でき
 const ACTION_JA: Record<string, string> = {
   cancel: "キャンセル", "ticket.change": "札の変更", "ticket.release": "札を空きに戻す", "menu.add": "メニュー追加",
   "menu.edit": "メニュー変更", "menu.delete": "メニュー削除", settings: "店舗設定の変更", codes: "合言葉・PINの変更",
-  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", reset: "練習データの消去",
+  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", reset: "練習データの消去", discounts: "まとめ買い割引の変更",
 };
 
 type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;
@@ -319,8 +320,10 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           ))}
         </ul>
         <Btn variant="accent" onClick={() => open("new")}>＋ 商品を追加</Btn>
-        <p className="hint">商品を押すと、名前・価格・残り数・並び順を変えられます。価格を変えても、すでに会計した注文の金額は変わりません。セット割などの割引は、価格をマイナス（例: -100）にした商品として登録します。</p>
+        <p className="hint">商品を押すと、名前・価格・残り数・並び順を変えられます。価格を変えても、すでに会計した注文の金額は変わりません。「2本で300円」のような割引は、下の「まとめ買い割引」で設定すると自動でつきます。</p>
       </section>
+
+      <DiscountPanel st={st} mutate={mutate} />
 
       {editing && (
         <Modal title={editing === "new" ? "商品を追加" : "商品を編集"} onClose={() => setEditing(null)}>
@@ -370,6 +373,112 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
                 <Btn variant="danger" className="mr-auto" onClick={async () => { if (await mutate(`/menu/${editing.id}`, "DELETE", undefined, "削除しました")) setEditing(null); }}>本当に削除する</Btn>
               )}
               <Btn type="submit" variant="accent" disabled={!name.trim() || price === "" || price === "-"}>保存</Btn>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/** まとめ買い割引。対象の商品が合わせて N 個になるごとに M 円引く（レジで自動） */
+function DiscountPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+  const [editing, setEditing] = useState<DiscountRule | "new" | null>(null);
+  const [name, setName] = useState("");
+  const [itemIds, setItemIds] = useState<string[]>([]);
+  const [every, setEvery] = useState("2");
+  const [off, setOff] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const items = st.menu.filter((m) => m.price > 0);
+  const nameOf = (id: string) => st.menu.find((m) => m.id === id)?.name;
+  const open = (r: DiscountRule | "new") => {
+    setEditing(r);
+    setName(r === "new" ? "" : r.name);
+    setItemIds(r === "new" ? [] : r.itemIds);
+    setEvery(r === "new" ? "2" : String(r.every));
+    setOff(r === "new" ? "" : String(r.off));
+    setConfirmDelete(false);
+  };
+  const save = (list: DiscountRule[], msg: string) => mutate("/discounts", "PUT", { discounts: list }, msg);
+  const toggle = (id: string) => setItemIds(itemIds.includes(id) ? itemIds.filter((x) => x !== id) : [...itemIds, id]);
+
+  // 例の計算: 対象の最初の商品の価格で、N 個のときの合計
+  const n = Number(every || 0);
+  const sample = st.menu.find((m) => itemIds.includes(m.id));
+  const example = sample && n >= 1 && Number(off) > 0
+    ? `例: ${sample.name} 1個 ${yen(sample.price)} → ${n}個 ${yen(sample.price * n - Number(off))}（${n}個ごとに${yen(Number(off))}引き）`
+    : "";
+
+  return (
+    <>
+      <section className="panel">
+        <h3 className="panel__title">まとめ買い割引 <span className="muted">{st.discounts.length}件</span></h3>
+        {st.discounts.length === 0 ? (
+          <p className="hint">まだありません。例: 焼き鳥を「2本ごとに100円引き」にすると、1本200円・2本300円になります。味違い（タレと塩）も合わせて数えます。</p>
+        ) : (
+          <ul className="menu-rows">
+            {st.discounts.map((r) => (
+              <li key={r.id}>
+                <button className="menu-row" onClick={() => open(r)}>
+                  <span className="menu-row__name">
+                    {r.name}
+                    <small className="discount-row__desc">{r.itemIds.map(nameOf).filter(Boolean).join("・")} を合わせて{r.every}個ごとに</small>
+                  </span>
+                  <span className="menu-row__price">−{yen(r.off)}</span>
+                  <span className="menu-row__edit" aria-hidden>編集 ›</span>
+                </button>
+                <button
+                  className={`switch ${r.enabled ? "is-on" : "is-off"}`}
+                  role="switch"
+                  aria-checked={r.enabled}
+                  aria-label={`${r.name} ${r.enabled ? "使う" : "使わない"}`}
+                  onClick={() => void save(st.discounts.map((x) => (x.id === r.id ? { ...x, enabled: !x.enabled } : x)), r.enabled ? `「${r.name}」を止めました` : `「${r.name}」を使います`)}
+                >
+                  {r.enabled ? "使う" : "使わない"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Btn onClick={() => open("new")} disabled={items.length === 0}>＋ まとめ買い割引を追加</Btn>
+        <p className="hint">レジで対象の商品を選ぶと自動で引かれます（押し忘れがありません）。来年もメニューを変えて使えます。設定を変えても、すでに会計した注文の金額は変わりません。</p>
+      </section>
+
+      {editing && (
+        <Modal title={editing === "new" ? "まとめ買い割引を追加" : "まとめ買い割引を編集"} onClose={() => setEditing(null)}>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const rule: DiscountRule = { id: editing === "new" ? "" : editing.id, name, itemIds, every: Number(every), off: Number(off), enabled: editing === "new" ? true : editing.enabled };
+            const list = editing === "new" ? [...st.discounts, rule] : st.discounts.map((x) => (x.id === editing.id ? rule : x));
+            if (await save(list, `「${name}」を保存しました`)) setEditing(null);
+          }}>
+            <label className="field">名前<small className="muted">レジとレシートの明細に出ます</small>
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 2本割" autoFocus />
+            </label>
+            <div className="field">対象の商品<small className="muted">選んだ商品を合わせて数えます（例: ももタレ1本＋もも塩1本＝2本）</small>
+              <div className="pick-chips">
+                {items.map((m) => (
+                  <button key={m.id} type="button" className={`pick-chip ${itemIds.includes(m.id) ? "is-on" : ""}`} aria-pressed={itemIds.includes(m.id)} onClick={() => toggle(m.id)}>
+                    {itemIds.includes(m.id) ? "✓ " : ""}{m.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="field-row">
+              <label className="field">何個ごと
+                <span className="input-unit"><input className="input input--narrow" inputMode="numeric" value={every} onChange={(e) => setEvery(e.target.value.replace(/\D/g, "").slice(0, 2))} />個ごとに</span>
+              </label>
+              <label className="field">引く金額
+                <span className="input-unit"><input className="input input--narrow" inputMode="numeric" value={off} onChange={(e) => setOff(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="100" />円引き</span>
+              </label>
+            </div>
+            {example && <p className="discount-example">{example}</p>}
+            <div className="modal__actions">
+              {editing !== "new" && !confirmDelete && <Btn variant="ghost" className="mr-auto" onClick={() => setConfirmDelete(true)}>削除</Btn>}
+              {editing !== "new" && confirmDelete && (
+                <Btn variant="danger" className="mr-auto" onClick={async () => { if (await save(st.discounts.filter((x) => x.id !== editing.id), "削除しました")) setEditing(null); }}>本当に削除する</Btn>
+              )}
+              <Btn type="submit" variant="accent" disabled={!name.trim() || itemIds.length === 0 || !(Number(every) >= 1) || !(Number(off) > 0)}>保存</Btn>
             </div>
           </form>
         </Modal>

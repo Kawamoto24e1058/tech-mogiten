@@ -12,6 +12,19 @@ export interface MenuItem {
   color: string | null;
 }
 
+/**
+ * まとめ買い割引。対象の商品が合わせて every 個になるごとに off 円引く。
+ * 例: ももタレ・もも塩を対象に「2個ごとに100円引き」→ 1本200円・2本300円
+ */
+export interface DiscountRule {
+  id: string;
+  name: string;
+  itemIds: string[];
+  every: number;
+  off: number;
+  enabled: boolean;
+}
+
 export interface OrderLine {
   itemId: string;
   name: string;
@@ -52,6 +65,7 @@ export interface ShopPublic {
 export interface ShopSnapshot {
   shop: ShopPublic;
   menu: MenuItem[];
+  discounts: DiscountRule[];
   /** 調理中・できた・直近に渡した注文 */
   orders: Order[];
   registerCount: number;

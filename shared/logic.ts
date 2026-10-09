@@ -1,4 +1,4 @@
-import type { MenuItem, Order, OrderLine, DaySummary, Closing } from "./types";
+import type { MenuItem, Order, OrderLine, DaySummary, Closing, DiscountRule } from "./types";
 import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "./types";
 
 /** 商品の色。未設定なら並び順で自動で割り当てる（隣どうしが同じ色になりにくい順） */
@@ -71,6 +71,28 @@ export function buildLines(menu: MenuItem[], input: { itemId: string; qty: numbe
     lines.push({ itemId, name: item.name, price: item.price, qty });
   }
   return lines;
+}
+
+/** 割引の明細の商品ID（メニューの商品と区別する） */
+export const DISCOUNT_PREFIX = "discount:";
+
+/** まとめ買い割引の明細（価格はマイナス）。対象の商品の数を合わせて数える */
+export function discountLines(lines: OrderLine[], rules: DiscountRule[]): OrderLine[] {
+  const out: OrderLine[] = [];
+  for (const r of rules) {
+    if (!r.enabled || r.every < 1 || r.off <= 0) continue;
+    const targets = new Set(r.itemIds);
+    const count = lines.reduce((s, l) => s + (targets.has(l.itemId) && l.price > 0 ? l.qty : 0), 0);
+    const times = Math.floor(count / r.every);
+    if (times > 0) out.push({ itemId: DISCOUNT_PREFIX + r.id, name: r.name, price: -r.off, qty: times });
+  }
+  return out;
+}
+
+/** 注文の明細（商品＋自動の割引）。サーバーと端末で同じ計算をする */
+export function priceLines(menu: MenuItem[], rules: DiscountRule[], input: { itemId: string; qty: number }[]): OrderLine[] {
+  const lines = buildLines(menu, input);
+  return [...lines, ...discountLines(lines, rules)];
 }
 
 export function summarize(

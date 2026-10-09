@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { businessDay, buildLines, changeBreakdown, halfHourSlot, nextFreeTicket, ordersCsv, summarize, ticketLabel, holdsTicket } from "../shared/logic";
-import type { Order } from "../shared/types";
+import { businessDay, buildLines, changeBreakdown, halfHourSlot, linesTotal, nextFreeTicket, ordersCsv, priceLines, summarize, ticketLabel, holdsTicket } from "../shared/logic";
+import type { DiscountRule, MenuItem, Order } from "../shared/types";
 
 const order = (p: Partial<Order>): Order => ({
   id: "x", seq: 1, ticket: 1, status: "cooking", lines: [], total: 0, received: 0, change: 0,
@@ -75,5 +75,29 @@ describe("お釣りの内訳", () => {
     expect(changeBreakdown(650)).toEqual([[500, 1], [100, 1], [50, 1]]);
     expect(changeBreakdown(9350)).toEqual([[5000, 1], [1000, 4], [100, 3], [50, 1]]);
     expect(changeBreakdown(0)).toEqual([]);
+  });
+});
+
+describe("まとめ買い割引", () => {
+  const menu: MenuItem[] = [
+    { id: "tare", name: "もも タレ", price: 200, soldOut: false, sort: 1, stock: null, color: null },
+    { id: "shio", name: "もも 塩", price: 200, soldOut: false, sort: 2, stock: null, color: null },
+    { id: "corn", name: "とうもろこし", price: 300, soldOut: false, sort: 3, stock: null, color: null },
+  ];
+  const rule: DiscountRule = { id: "r1", name: "2本割", itemIds: ["tare", "shio"], every: 2, off: 100, enabled: true };
+
+  it("味違いも合わせて数え、2本ごとに引く", () => {
+    const lines = priceLines(menu, [rule], [{ itemId: "tare", qty: 1 }, { itemId: "shio", qty: 1 }]);
+    expect(linesTotal(lines)).toBe(300);
+    expect(lines.at(-1)).toEqual({ itemId: "discount:r1", name: "2本割", price: -100, qty: 1 });
+  });
+
+  it("端数は割り引かない・対象外は数えない", () => {
+    expect(linesTotal(priceLines(menu, [rule], [{ itemId: "tare", qty: 3 }, { itemId: "corn", qty: 1 }]))).toBe(200 * 3 - 100 + 300);
+    expect(linesTotal(priceLines(menu, [rule], [{ itemId: "tare", qty: 1 }]))).toBe(200);
+  });
+
+  it("止めている割引は使わない", () => {
+    expect(linesTotal(priceLines(menu, [{ ...rule, enabled: false }], [{ itemId: "tare", qty: 2 }]))).toBe(400);
   });
 });

@@ -70,7 +70,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
           </div>
         )}
         <ul className="kcard__lines">
-          {o.lines.map((l) => (
+          {o.lines.filter((l) => l.price >= 0).map((l) => (
             <li key={l.itemId}>
               <span><i className="swatch" style={{ background: colorOf(l.itemId) }} aria-hidden />{l.name}</span>
               <b>×{l.qty}</b>
@@ -93,7 +93,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
       {handed.map((o) => (
         <li key={o.id}>
           <b>{label(o)}</b>
-          <span className="handed__items">{o.lines.map((l) => `${l.name}×${l.qty}`).join("、")}</span>
+          <span className="handed__items">{o.lines.filter((l) => l.price >= 0).map((l) => `${l.name}×${l.qty}`).join("、")}</span>
           <button className="link" onClick={() => set(o, "ready")}>戻す</button>
         </li>
       ))}
@@ -157,7 +157,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
         <Modal title="お客さんの札と同じですか？" onClose={() => setHanding(null)}>
           <p className="handover__ticket">{label(handing)}</p>
           <ul className="handover__lines">
-            {handing.lines.map((l) => (
+            {handing.lines.filter((l) => l.price >= 0).map((l) => (
               <li key={l.itemId}><span>{l.name}</span><b>×{l.qty}</b></li>
             ))}
           </ul>

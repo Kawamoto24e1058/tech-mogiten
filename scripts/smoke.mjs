@@ -58,8 +58,8 @@ if (!AUTH) {
 let st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "テスト焼きそば", price: 400 } })).data;
 st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "テストジュース", price: 150 } })).data;
 check(st.menu.length === before + 2, "メニューを2件登録");
-const yakisoba = st.menu.find((m) => m.name === "テスト焼きそば");
-const juice = st.menu.find((m) => m.name === "テストジュース");
+const yakisoba = st.menu.findLast((m) => m.name === "テスト焼きそば");
+const juice = st.menu.findLast((m) => m.name === "テストジュース");
 await req(`${A}/admin/settings`, { code: "1234", method: "PUT", body: { ticketCount: 3 } });
 
 const reg = socket("a", "register", "yakisoba");
@@ -104,7 +104,7 @@ st = (await req(`${A}/admin/state`, { code: "1234" })).data;
 check(st.tickets.length === 1 && st.tickets[0].seq === 2, "渡したら札1は空き、重複注文の札だけ残る");
 
 kit.ws.send(JSON.stringify({ type: "op", opId: "k3", op: { kind: "setSoldOut", itemId: juice.id, soldOut: true } }));
-const soldSnap = await reg.until((m) => m.type === "snapshot" && m.data.menu.some((x) => x.soldOut));
+const soldSnap = await reg.until((m) => m.type === "snapshot" && m.data.menu.some((x) => x.id === juice.id && x.soldOut));
 check(soldSnap.data.menu.find((x) => x.id === juice.id).soldOut, "厨房の売り切れがレジに反映");
 
 await req(`${A}/admin/menu/${yakisoba.id}`, { code: "1234", method: "PUT", body: { price: 500 } });
@@ -130,7 +130,7 @@ await authCheck(async () => (await req(`/api/master/summary`, { code: "1234" }))
 
 // ---- 残り数・割引・レジからの取り消し ----
 st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "限定品", price: 200, stock: 2 } })).data;
-const limited = st.menu.find((x) => x.name === "限定品");
+const limited = st.menu.findLast((x) => x.name === "限定品");
 check(limited.stock === 2, "残り数を設定して商品を登録");
 const lim1 = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: limited.id, qty: 2 }], received: 400, createdAt: Date.now() };
 reg.ws.send(JSON.stringify({ type: "op", opId: "s1", op: { kind: "createOrder", order: lim1 } }));
@@ -149,7 +149,7 @@ await authCheck(async () => (await req(`${A}/history/${old.id}/cancel`, { code: 
 const adminCancel = await req(`${A}/history/${old.id}/cancel`, { code: "1234", method: "POST", body: { reason: "入力ミス" } });
 check(adminCancel.status === 200, `管理PINなら5分以上たっていても取り消せる (${adminCancel.status} ${JSON.stringify(adminCancel.data)})`);
 st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "セット割", price: -100 } })).data;
-const disc = st.menu.find((x) => x.name === "セット割");
+const disc = st.menu.findLast((x) => x.name === "セット割");
 check(disc.price === -100, "割引（マイナスの価格）を登録できる");
 const neg = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: disc.id, qty: 1 }], received: 0, createdAt: Date.now() };
 reg.ws.send(JSON.stringify({ type: "op", opId: "n1", op: { kind: "createOrder", order: neg } }));
@@ -159,6 +159,21 @@ reg.ws.send(JSON.stringify({ type: "op", opId: "n2", op: { kind: "createOrder", 
 await reg.until((m) => m.type === "ack" && m.opId === "n2");
 const wd = (await req(`${A}/history`, { code: "yakisoba" })).data.orders.find((x) => x.id === withDisc.id);
 check(wd.total === 400 && wd.change === 0, "割引込みの合計（500 − 100 = 400円）");
+
+// ---- まとめ買い割引（自動） ----
+st = (await req(`${A}/admin/discounts`, { code: "1234", method: "PUT", body: { discounts: [{ name: "テスト2個割", itemIds: [yakisoba.id, juice.id], every: 2, off: 100 }] } })).data;
+check(st.discounts.length === 1 && st.discounts[0].enabled, "まとめ買い割引を登録");
+const priceOf = (id) => st.menu.find((x) => x.id === id).price;
+const bundleTotal = priceOf(yakisoba.id) + priceOf(juice.id) * 2 - 100;
+check((await req(`${A}/admin/discounts`, { code: "1234", method: "PUT", body: { discounts: [{ name: "空", itemIds: [], every: 2, off: 100 }] } })).status === 400, "対象のない割引は登録できない");
+const bundle = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: yakisoba.id, qty: 1 }, { itemId: juice.id, qty: 2 }], received: 2000, createdAt: Date.now() };
+reg.ws.send(JSON.stringify({ type: "op", opId: "d1", op: { kind: "createOrder", order: bundle } }));
+await reg.until((m) => m.type === "ack" && m.opId === "d1");
+const bo = (await req(`${A}/history`, { code: "yakisoba" })).data.orders.find((x) => x.id === bundle.id);
+check(bo.total === bundleTotal && bo.lines.some((l) => l.name === "テスト2個割" && l.price === -100 && l.qty === 1), "対象の商品を合わせて数え、自動で割り引く（3個 → 1回）");
+check((await kit.until((m) => m.type === "snapshot" && m.data.discounts?.length === 1)).data.discounts[0].name === "テスト2個割", "割引の設定が端末に届く");
+st = (await req(`${A}/admin/discounts`, { code: "1234", method: "PUT", body: { discounts: [] } })).data;
+check(st.discounts.length === 0, "まとめ買い割引を削除");
 
 // ---- 開店前の準備 ----
 const t1 = { id: crypto.randomUUID(), ticket: 2, lines: [{ itemId: yakisoba.id, qty: 1 }], received: 500, createdAt: Date.now() };
