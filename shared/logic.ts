@@ -9,6 +9,21 @@ export function menuColor(item: { color: string | null }, index: number) {
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
+/**
+ * 日付の表示。例: 「1日目 11/20（金）」。初日が決まっていない・初日より前は「11/18（水）」
+ * day・start は YYYY-MM-DD
+ */
+export function dayLabel(day: string, start?: string | null): string {
+  const [y, m, d] = day.split("-").map(Number);
+  if (!y || !m || !d) return day;
+  const week = "日月火水木金土"[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const md = `${m}/${d}（${week}）`;
+  if (!start) return md;
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const n = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(sy, sm - 1, sd)) / 86400000) + 1;
+  return n >= 1 && n <= 30 ? `${n}日目 ${md}` : md;
+}
+
 /** 営業日（日本時間の日付 YYYY-MM-DD） */
 export function businessDay(ts: number): string {
   return new Date(ts + JST_OFFSET_MS).toISOString().slice(0, 10);

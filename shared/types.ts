@@ -48,6 +48,8 @@ export interface Order {
   cancelReason: string | null;
   ticketReleased: boolean;
   day: string;
+  /** 削除（ゴミ箱）した時刻。null なら通常 */
+  deletedAt?: number | null;
 }
 
 export interface ShopPublic {
@@ -56,6 +58,8 @@ export interface ShopPublic {
   color: string;
   prefix: string;
   ticketCount: number;
+  /** 文化祭の初日（YYYY-MM-DD）。日付を「1日目」などと表示する */
+  festivalStart?: string | null;
   configured: boolean;
   /** 合言葉・PIN を使うか（環境変数 REQUIRE_AUTH=1 のときだけ） */
   authRequired: boolean;

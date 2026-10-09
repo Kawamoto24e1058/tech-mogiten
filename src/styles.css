@@ -767,3 +767,20 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 @media (max-width: 1099px) { .register-wide--flow { grid-template-columns: 200px minmax(0, 1fr) 320px; } }
 .ticket-panel__num { font-size: 2.4rem; padding: 12px 8px 10px; }
 .ticket-bar { display: grid; gap: 8px; }
+
+/* ---------- 日付・日ごとの売上・ゴミ箱 ---------- */
+.day-heading { font-size: 1.1rem; font-weight: 700; margin: 0 2px -4px; }
+.day-select__label { font-variant-numeric: tabular-nums; }
+.input--date { max-width: 14rem; }
+.day-totals { list-style: none; margin: 0 -8px; padding: 0; }
+.day-totals li + li { border-top: 1px solid var(--divider); }
+.day-total { display: grid; grid-template-columns: 1fr auto auto; gap: 16px; align-items: baseline; width: 100%; min-height: 52px; padding: 10px 8px; border: 0; border-radius: var(--r-sm); background: none; text-align: left; font-variant-numeric: tabular-nums; }
+.day-total:hover { background: var(--subtle); }
+.day-total.is-on { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.day-total__day { font-weight: 600; }
+.day-total__count { color: var(--muted); font-size: 0.9rem; }
+.day-total__sales { min-width: 6em; text-align: right; font-size: 1.15rem; }
+.day-totals__all { margin: 0; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.day-totals__all b { color: var(--text); font-size: 1.2rem; }
+.trash-row { display: flex; align-items: center; gap: 12px; padding: 8px; }
+.trash-row .order-row__main { flex: 1; }

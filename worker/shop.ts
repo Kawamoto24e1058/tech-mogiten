@@ -103,6 +103,9 @@ export class ShopDO extends DurableObject<Env> {
     const menuCols = this.sql.exec<{ name: string }>("PRAGMA table_info(menu)").toArray().map((r) => r.name);
     if (!menuCols.includes("stock")) this.sql.exec("ALTER TABLE menu ADD COLUMN stock INTEGER");
     if (!menuCols.includes("color")) this.sql.exec("ALTER TABLE menu ADD COLUMN color TEXT");
+    // 削除した注文はすぐには消さず、deleted_at をつけてゴミ箱に入れる（戻せるように）
+    const orderCols = this.sql.exec<{ name: string }>("PRAGMA table_info(orders)").toArray().map((r) => r.name);
+    if (!orderCols.includes("deleted_at")) this.sql.exec("ALTER TABLE orders ADD COLUMN deleted_at INTEGER");
   }
 
   // ---------- 設定 ----------
@@ -154,6 +157,7 @@ export class ShopDO extends DurableObject<Env> {
       color: this.get("color") ?? "#334155",
       prefix: this.get("prefix") ?? "",
       ticketCount: Number(this.get("ticketCount") ?? 30),
+      festivalStart: this.get("festivalStart"),
       configured: this.get("staffHash") != null,
       authRequired: this.authRequired,
     };
@@ -211,6 +215,7 @@ export class ShopDO extends DurableObject<Env> {
       cancelReason: (r.cancel_reason as string | null) ?? null,
       ticketReleased: r.ticket_released === 1,
       day: r.day as string,
+      deletedAt: (r.deleted_at as number | null) ?? null,
     };
   }
 
@@ -232,13 +237,13 @@ export class ShopDO extends DurableObject<Env> {
 
   private activeOrders(): Order[] {
     return this.sql
-      .exec("SELECT * FROM orders WHERE status IN ('cooking','ready') OR (status = 'handed' AND handed_at >= ?) ORDER BY seq", Date.now() - RECENT_HANDED_MS)
+      .exec("SELECT * FROM orders WHERE deleted_at IS NULL AND (status IN ('cooking','ready') OR (status = 'handed' AND handed_at >= ?)) ORDER BY seq", Date.now() - RECENT_HANDED_MS)
       .toArray()
       .map((r) => this.rowToOrder(r));
   }
 
   private ordersOfDay(day: string): Order[] {
-    return this.sql.exec("SELECT * FROM orders WHERE day = ? ORDER BY seq", day).toArray().map((r) => this.rowToOrder(r));
+    return this.sql.exec("SELECT * FROM orders WHERE day = ? AND deleted_at IS NULL ORDER BY seq", day).toArray().map((r) => this.rowToOrder(r));
   }
 
   private snapshot(): ShopSnapshot {
@@ -255,7 +260,7 @@ export class ShopDO extends DurableObject<Env> {
   private displaySnapshot(): DisplaySnapshot {
     const shop = this.shopPublic();
     const ready = this.sql
-      .exec<{ ticket: number; ready_at: number }>("SELECT ticket, ready_at FROM orders WHERE status = 'ready' AND ticket IS NOT NULL ORDER BY ready_at")
+      .exec<{ ticket: number; ready_at: number }>("SELECT ticket, ready_at FROM orders WHERE status = 'ready' AND ticket IS NOT NULL AND deleted_at IS NULL ORDER BY ready_at")
       .toArray()
       .map((r) => ({ ticket: ticketLabel(shop.prefix, r.ticket), readyAt: r.ready_at }));
     return { shop, ready, serverTime: Date.now() };
@@ -354,6 +359,32 @@ export class ShopDO extends DurableObject<Env> {
     return warning;
   }
 
+  /** 残り数を注文の分だけ増やす（sign = -1 で減らす） */
+  private adjustStock(o: Order, sign: 1 | -1) {
+    for (const l of o.lines) {
+      const r = this.sql.exec<{ stock: number | null }>("SELECT stock FROM menu WHERE id = ?", l.itemId).toArray()[0];
+      if (!r || r.stock == null) continue;
+      const next = Math.max(0, r.stock + sign * l.qty);
+      this.sql.exec("UPDATE menu SET stock = ?, sold_out = CASE WHEN ? <= 0 THEN 1 WHEN stock = 0 THEN 0 ELSE sold_out END WHERE id = ?", next, next, l.itemId);
+    }
+  }
+
+  /** ゴミ箱に入れる。売上・厨房・呼び出しから外れ、札は空く。残り数は戻す */
+  private softDelete(list: Order[]) {
+    const now = Date.now();
+    for (const o of list) {
+      if (o.deletedAt != null) continue;
+      this.sql.exec("UPDATE orders SET deleted_at = ?, ticket_released = 1 WHERE id = ?", now, o.id);
+      if (o.status !== "cancelled") this.adjustStock(o, 1);
+    }
+  }
+
+  /** ゴミ箱から戻す。札は空いたまま（渡し済みの扱い） */
+  private restore(o: Order) {
+    this.sql.exec("UPDATE orders SET deleted_at = NULL WHERE id = ?", o.id);
+    if (o.status !== "cancelled") this.adjustStock(o, -1);
+  }
+
   /** 注文の取り消し。残り数を戻す */
   private cancelOrder(o: Order, reason: string, by: "staff" | "admin") {
     this.sql.exec("UPDATE orders SET status = 'cancelled', cancelled_at = ?, cancel_reason = ? WHERE id = ?", Date.now(), reason, o.id);
@@ -431,7 +462,15 @@ export class ShopDO extends DurableObject<Env> {
   private adminState(day: string) {
     const shop = this.shopPublic();
     const orders = this.ordersOfDay(day);
-    const days = this.sql.exec<{ day: string }>("SELECT DISTINCT day FROM orders ORDER BY day DESC").toArray().map((r) => r.day);
+    // 日ごとの売上（キャンセル・削除を除く）。日付の一覧もここから作る
+    const dayTotals = this.sql
+      .exec<{ day: string; sales: number; count: number }>(
+        "SELECT day, SUM(CASE WHEN status != 'cancelled' THEN total ELSE 0 END) AS sales, SUM(CASE WHEN status != 'cancelled' THEN 1 ELSE 0 END) AS count FROM orders WHERE deleted_at IS NULL GROUP BY day ORDER BY day DESC",
+      )
+      .toArray()
+      .map((r) => ({ day: r.day, sales: Number(r.sales ?? 0), count: Number(r.count ?? 0) }));
+    const days = dayTotals.map((r) => r.day);
+    const trash = this.sql.exec("SELECT * FROM orders WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, seq DESC LIMIT 300").toArray().map((r) => this.rowToOrder(r));
     const audit = this.sql
       .exec("SELECT at, action, order_id, detail FROM audit WHERE day = ? AND action != 'create' ORDER BY id DESC LIMIT 200", day)
       .toArray()
@@ -442,6 +481,8 @@ export class ShopDO extends DurableObject<Env> {
       menu: this.menu(),
       discounts: this.discounts(),
       orders,
+      dayTotals,
+      trash,
       tickets: this.activeOrders().filter(holdsTicket).map((o) => ({ ticket: o.ticket!, orderId: o.id, seq: o.seq, status: o.status })),
       days,
       audit,
@@ -499,7 +540,7 @@ export class ShopDO extends DurableObject<Env> {
     // レジの履歴（スタッフ用）
     if (path === "/history" && m === "GET") {
       await this.authorize(req, "staff");
-      const orders = this.sql.exec("SELECT * FROM orders WHERE day = ? ORDER BY seq DESC LIMIT 300", today).toArray().map((r) => this.rowToOrder(r));
+      const orders = this.sql.exec("SELECT * FROM orders WHERE day = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 300", today).toArray().map((r) => this.rowToOrder(r));
       return json({ orders, serverTime: Date.now(), cancelWindowMs: STAFF_CANCEL_WINDOW_MS });
     }
     let hs: RegExpMatchArray | null;
@@ -536,7 +577,12 @@ export class ShopDO extends DurableObject<Env> {
     }
 
     if (p === "/settings" && m === "PUT") {
-      const b = await this.body<Partial<{ name: string; color: string; prefix: string; ticketCount: number }>>(req);
+      const b = await this.body<Partial<{ name: string; color: string; prefix: string; ticketCount: number; festivalStart: string | null }>>(req);
+      if (b.festivalStart !== undefined) {
+        const v = b.festivalStart ? String(b.festivalStart) : "";
+        if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new HttpError(400, "初日の日付の形式が不正です");
+        this.set("festivalStart", v || null);
+      }
       if (b.name != null) {
         const name = String(b.name).trim().slice(0, 30);
         if (!name) throw new HttpError(400, "店舗名を入力してください");
@@ -645,6 +691,34 @@ export class ShopDO extends DurableObject<Env> {
       return json(this.adminState(day));
     }
 
+    // テストの注文などを削除する。すぐには消さずゴミ箱に入れ、売上から外す（戻せる）
+    if ((seg = p.match(/^\/orders\/([^/]+)\/(delete|restore)$/)) && m === "POST") {
+      const o = this.order(decodeURIComponent(seg[1]));
+      if (!o) throw new HttpError(404, "注文が見つかりません");
+      if (seg[2] === "delete") {
+        if (o.deletedAt != null) throw new HttpError(409, "すでに削除されています");
+        this.softDelete([o]);
+        this.audit("delete", o.id, { seq: o.seq, total: o.total, day: o.day });
+      } else {
+        if (o.deletedAt == null) throw new HttpError(409, "削除されていません");
+        this.restore(o);
+        this.audit("restore", o.id, { seq: o.seq, total: o.total, day: o.day });
+      }
+      this.broadcast();
+      return json(this.adminState(day));
+    }
+    // ある日の注文をまとめて削除（リハーサルの日など）。確認のため日付を入力してもらう
+    if ((seg = p.match(/^\/days\/(\d{4}-\d{2}-\d{2})\/delete$/)) && m === "POST") {
+      const target = seg[1];
+      const { confirm } = await this.body<{ confirm: string }>(req);
+      if (confirm !== "削除") throw new HttpError(400, "確認のため「削除」と入力してください");
+      const list = this.ordersOfDay(target);
+      this.softDelete(list);
+      this.audit("delete.day", null, { day: target, orders: list.length, total: list.reduce((a, o) => a + (o.status === "cancelled" ? 0 : o.total), 0) });
+      this.broadcast();
+      return json(this.adminState(target));
+    }
+
     if ((seg = p.match(/^\/orders\/([^/]+)\/cancel$/)) && m === "POST") {
       const id = decodeURIComponent(seg[1]);
       const { reason } = await this.body<{ reason: string }>(req);
@@ -690,16 +764,16 @@ export class ShopDO extends DurableObject<Env> {
       const { confirm } = await this.body<{ confirm: string }>(req);
       if (confirm !== "消去") throw new HttpError(400, "確認のため「消去」と入力してください");
       const sold = this.sql
-        .exec<{ lines: string }>("SELECT lines FROM orders WHERE status != 'cancelled'")
+        .exec<{ lines: string }>("SELECT lines FROM orders WHERE status != 'cancelled' AND deleted_at IS NULL")
         .toArray()
         .flatMap((r) => JSON.parse(r.lines) as { itemId: string; qty: number }[]);
       for (const l of sold) {
         this.sql.exec("UPDATE menu SET stock = stock + ?, sold_out = CASE WHEN stock = 0 THEN 0 ELSE sold_out END WHERE id = ? AND stock IS NOT NULL", l.qty, l.itemId);
       }
-      const n = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM orders").one().n;
-      this.sql.exec("DELETE FROM orders");
+      const n = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM orders WHERE deleted_at IS NULL").one().n;
+      // 注文はゴミ箱へ（あとから戻せる）。変更履歴は残す
+      this.sql.exec("UPDATE orders SET deleted_at = ?, ticket_released = 1 WHERE deleted_at IS NULL", Date.now());
       this.sql.exec("DELETE FROM closings");
-      this.sql.exec("DELETE FROM audit");
       this.sql.exec("DELETE FROM kv WHERE key LIKE 'float:%'");
       this.audit("reset", null, { orders: n, by: role });
       this.broadcast();

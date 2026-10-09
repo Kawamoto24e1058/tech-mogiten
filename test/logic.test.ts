@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDay, buildLines, changeBreakdown, halfHourSlot, linesTotal, nextFreeTicket, nextTicketAfter, ordersCsv, quickAmounts, priceLines, summarize, ticketLabel, holdsTicket } from "../shared/logic";
+import { businessDay, dayLabel, buildLines, changeBreakdown, halfHourSlot, linesTotal, nextFreeTicket, nextTicketAfter, ordersCsv, quickAmounts, priceLines, summarize, ticketLabel, holdsTicket } from "../shared/logic";
 import type { DiscountRule, MenuItem, Order } from "../shared/types";
 
 const order = (p: Partial<Order>): Order => ({
@@ -115,5 +115,14 @@ describe("札とお預かりの候補", () => {
     expect(quickAmounts(800)).toEqual([1000, 5000, 10000]);
     expect(quickAmounts(1200)).toEqual([2000, 5000, 10000]);
     expect(quickAmounts(1000)).toEqual([2000, 5000, 10000]);
+  });
+});
+
+describe("日付の表示", () => {
+  it("初日から数えて「N日目」をつける", () => {
+    expect(dayLabel("2026-11-20", "2026-11-20")).toBe("1日目 11/20（金）");
+    expect(dayLabel("2026-11-22", "2026-11-20")).toBe("3日目 11/22（日）");
+    expect(dayLabel("2026-11-18", "2026-11-20")).toBe("11/18（水）");
+    expect(dayLabel("2026-11-18", null)).toBe("11/18（水）");
   });
 });

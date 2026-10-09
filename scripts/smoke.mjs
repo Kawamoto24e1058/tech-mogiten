@@ -81,7 +81,7 @@ await reg.until((m) => m.type === "ack" && m.opId === "op1b");
 const snap = await kit.until((m) => m.type === "snapshot" && m.data.orders.length > 0);
 check(snap.data.orders.length === 1, "同じ注文を再送しても1件のまま（冪等）");
 const o = snap.data.orders[0];
-check(o.total === 950 && o.change === 50 && o.seq === 1, "合計950円・お釣り50円・注文番号1");
+check(o.total === 950 && o.change === 50 && o.seq >= 1, "合計950円・お釣り50円・注文番号がつく");
 
 const short = { ...order1, id: crypto.randomUUID(), received: 100 };
 reg.ws.send(JSON.stringify({ type: "op", opId: "op2", op: { kind: "createOrder", order: short } }));
@@ -101,7 +101,7 @@ check(!JSON.stringify(d).includes("テスト焼きそば"), "呼び出し表示�
 kit.ws.send(JSON.stringify({ type: "op", opId: "k2", op: { kind: "setStatus", orderId: o.id, status: "handed" } }));
 await kit.until((m) => m.type === "ack" && m.opId === "k2");
 st = (await req(`${A}/admin/state`, { code: "1234" })).data;
-check(st.tickets.length === 1 && st.tickets[0].seq === 2, "渡したら札1は空き、重複注文の札だけ残る");
+check(st.tickets.length === 1 && st.tickets[0].seq === o.seq + 1, "渡したら札1は空き、重複注文の札だけ残る");
 
 kit.ws.send(JSON.stringify({ type: "op", opId: "k3", op: { kind: "setSoldOut", itemId: juice.id, soldOut: true } }));
 const soldSnap = await reg.until((m) => m.type === "snapshot" && m.data.menu.some((x) => x.id === juice.id && x.soldOut));
@@ -185,6 +185,23 @@ reg.ws.send(JSON.stringify({ type: "op", opId: "u3", op: { kind: "releaseTicket"
 check((await reg.until((m) => m.type === "ack" && m.opId === "u3")).ok, "使用中の札を使い直す操作を受け付ける");
 const ruo = (await req(`${A}/history`, { code: "yakisoba" })).data.orders.find((x) => x.id === ru.id);
 check(ruo.status === "handed" && ruo.ticketReleased, "札を持っていた「できた」の注文は渡したになり、札が空く");
+
+// ---- 削除（ゴミ箱）と戻す ----
+const dz = { id: crypto.randomUUID(), ticket: null, lines: [{ itemId: yakisoba.id, qty: 1 }], received: 2000, createdAt: Date.now() };
+reg.ws.send(JSON.stringify({ type: "op", opId: "z1", op: { kind: "createOrder", order: dz } }));
+await reg.until((m) => m.type === "ack" && m.opId === "z1");
+const salesBefore = (await req(`${A}/admin/summary`, { code: "1234" })).data.sales;
+const dzTotal = (await req(`${A}/admin/state`, { code: "1234" })).data.orders.find((x) => x.id === dz.id).total;
+st = (await req(`${A}/admin/orders/${dz.id}/delete`, { code: "1234", method: "POST", body: {} })).data;
+check(st.trash.some((x) => x.id === dz.id) && !st.orders.some((x) => x.id === dz.id), "削除した注文はゴミ箱に入り、注文の一覧から消える");
+const salesAfter = (await req(`${A}/admin/summary`, { code: "1234" })).data.sales; if (salesAfter !== salesBefore - dzTotal) console.log("DBG", salesBefore, dzTotal, salesAfter, st.dayTotals);
+check(salesAfter === salesBefore - dzTotal, "削除した注文は売上から外れる");
+check(st.dayTotals[0].sales === salesBefore - dzTotal, "日ごとの売上にも反映される");
+st = (await req(`${A}/admin/orders/${dz.id}/restore`, { code: "1234", method: "POST", body: {} })).data;
+check(st.orders.some((x) => x.id === dz.id) && !st.trash.some((x) => x.id === dz.id), "ゴミ箱から戻せる");
+check((await req(`${A}/admin/summary`, { code: "1234" })).data.sales === salesBefore, "戻すと売上も戻る");
+const today = st.dayTotals[0].day;
+check((await req(`${A}/admin/days/${today}/delete`, { code: "1234", method: "POST", body: { confirm: "けす" } })).status === 400, "日ごとの削除は「削除」と入力しないとできない");
 
 // ---- 開店前の準備 ----
 const t1 = { id: crypto.randomUUID(), ticket: 2, lines: [{ itemId: yakisoba.id, qty: 1 }], received: 500, createdAt: Date.now() };

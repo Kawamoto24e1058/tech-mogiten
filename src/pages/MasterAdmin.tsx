@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DaySummary, ShopPublic } from "../../shared/types";
-import { yen } from "../../shared/logic";
+import { dayLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Money, Page, accentStyle } from "../components/ui";
 import { ItemRanking } from "../components/Summary";
 import { api, ApiError, todayJst } from "../util";
@@ -38,6 +38,7 @@ export function MasterAdmin({ code, onAuthError }: { code: string; onAuthError: 
         <label className="day-select">
           <span>日付</span>
           <input className="input" type="date" value={day} onChange={(e) => setDay(e.target.value || todayJst())} />
+          <b className="day-select__label">{dayLabel(day, data?.find((d) => d.shop.festivalStart)?.shop.festivalStart)}{day === todayJst() ? "・今日" : ""}</b>
         </label>
         {error && <Banner kind="error">{error}</Banner>}
         {!data ? <p className="hint">読み込んでいます…</p> : (

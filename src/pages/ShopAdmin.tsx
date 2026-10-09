@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DaySummary, DiscountRule, MenuItem, Order, ShopPublic } from "../../shared/types";
 import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "../../shared/types";
-import { menuColor, ticketLabel, yen } from "../../shared/logic";
+import { dayLabel, menuColor, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
 import { ItemRanking, Kpis, SlotBars, SubStats } from "../components/Summary";
 import { api, ApiError, timeOf, todayJst } from "../util";
@@ -12,6 +12,10 @@ interface AdminState {
   menu: MenuItem[];
   discounts: DiscountRule[];
   orders: Order[];
+  /** 日ごとの売上（キャンセル・削除を除く） */
+  dayTotals: { day: string; sales: number; count: number }[];
+  /** 削除した注文（ゴミ箱） */
+  trash: Order[];
   tickets: { ticket: number; orderId: string; seq: number; status: string }[];
   days: string[];
   audit: { at: number; action: string; orderId: string | null; detail: Record<string, unknown> }[];
@@ -23,7 +27,7 @@ const STATUS_JA: Record<string, string> = { cooking: "調理中", ready: "でき
 const ACTION_JA: Record<string, string> = {
   cancel: "キャンセル", "ticket.change": "札の変更", "ticket.release": "札を空きに戻す", "menu.add": "メニュー追加",
   "menu.edit": "メニュー変更", "menu.delete": "メニュー削除", settings: "店舗設定の変更", codes: "合言葉・PINの変更",
-  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", "ticket.reuse": "レジで使用中の札を使い直し", reset: "練習データの消去", discounts: "まとめ買い割引の変更",
+  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", "ticket.reuse": "レジで使用中の札を使い直し", reset: "練習データの消去", discounts: "まとめ買い割引の変更", delete: "注文を削除（ゴミ箱へ）", restore: "削除した注文を戻す", "delete.day": "その日の注文をまとめて削除",
 };
 
 type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;
@@ -96,6 +100,7 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
 
   const shop = st?.shop ?? null;
   const days = Array.from(new Set([todayJst(), ...(st?.days ?? [])])).sort().reverse();
+  const label = (d: string) => `${dayLabel(d, shop?.festivalStart)}${d === todayJst() ? "・今日" : ""}`;
 
   return (
     <Page shop={shop} className="page--work">
@@ -106,11 +111,11 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
         ))}
       </nav>
       <main className="admin">
-        {(tab === "sales" || tab === "orders" || tab === "closing") && days.length > 1 && (
+        {(tab === "sales" || tab === "orders" || tab === "closing") && (
           <label className="day-select">
             <span>日付</span>
             <select className="input" value={day} onChange={(e) => setDay(e.target.value)}>
-              {days.map((d) => <option key={d} value={d}>{d}{d === todayJst() ? "（今日）" : ""}</option>)}
+              {days.map((d) => <option key={d} value={d}>{label(d)}</option>)}
             </select>
           </label>
         )}
@@ -120,14 +125,16 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
           <>
             {tab === "sales" && (
               <>
+                <h2 className="day-heading">{label(day)} の売上</h2>
                 <Kpis s={sum} />
                 <SubStats s={sum} />
                 <ItemRanking s={sum} />
                 <SlotBars s={sum} />
-                <Btn onClick={() => void downloadCsv()}>CSVで書き出す</Btn>
+                <Btn onClick={() => void downloadCsv()}>この日のCSVを書き出す</Btn>
+                <DayTotals st={st} day={day} label={label} onPick={setDay} />
               </>
             )}
-            {tab === "orders" && <OrdersTab st={st} mutate={mutate} />}
+            {tab === "orders" && <OrdersTab st={st} mutate={mutate} day={day} dayText={label(day)} label={label} />}
             {tab === "menu" && <MenuTab st={st} mutate={mutate} />}
             {tab === "closing" && <ClosingTab key={sum.day} sum={sum} call={call} setSum={setSum} setInfo={setInfo} onCsv={() => void downloadCsv()} />}
             {tab === "settings" && <SettingsTab st={st} mutate={mutate} />}
@@ -148,14 +155,41 @@ function describe(d: Record<string, unknown>): string {
   if (d.ticket != null) parts.push(`札 ${d.ticket}`);
   if (d.from !== undefined) parts.push(`札 ${d.from ?? "なし"} → ${d.to ?? "なし"}`);
   if (d.amount != null) parts.push(yen(Number(d.amount)));
+  if (d.day != null && d.orders != null) parts.push(`${d.day}・${d.orders}件`);
   if (d.diff != null) parts.push(`差額 ${yen(Number(d.diff))}`);
   if (d.soldOut != null) parts.push(d.soldOut ? "売り切れ" : "販売中");
   return parts.join(" / ");
 }
 
-function OrdersTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+/** 日ごとの売上。押すとその日を表示する */
+function DayTotals({ st, day, label, onPick }: { st: AdminState; day: string; label: (d: string) => string; onPick: (d: string) => void }) {
+  if (st.dayTotals.length === 0) return null;
+  const all = st.dayTotals.reduce((a, d) => ({ sales: a.sales + d.sales, count: a.count + d.count }), { sales: 0, count: 0 });
+  return (
+    <section className="panel">
+      <h3 className="panel__title">日ごとの売上</h3>
+      <ul className="day-totals">
+        {st.dayTotals.map((d) => (
+          <li key={d.day}>
+            <button className={`day-total ${d.day === day ? "is-on" : ""}`} onClick={() => onPick(d.day)} aria-pressed={d.day === day}>
+              <span className="day-total__day">{label(d.day)}</span>
+              <span className="day-total__count">{d.count}件</span>
+              <b className="day-total__sales">{yen(d.sales)}</b>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {st.dayTotals.length > 1 && <p className="day-totals__all">全日の合計 <b>{yen(all.sales)}</b>（{all.count}件）</p>}
+      <p className="hint">テストの注文は「注文」タブから削除できます（ゴミ箱に入り、戻せます）。</p>
+    </section>
+  );
+}
+
+function OrdersTab({ st, mutate, day, dayText, label: dayLabelOf }: { st: AdminState; mutate: Mutate; day: string; dayText: string; label: (d: string) => string }) {
   const [selected, setSelected] = useState<Order | null>(null);
-  const [mode, setMode] = useState<"menu" | "cancel" | "ticket">("menu");
+  const [mode, setMode] = useState<"menu" | "cancel" | "ticket" | "delete">("menu");
+  const [deleteDay, setDeleteDay] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
   const [reason, setReason] = useState("");
   const [newTicket, setNewTicket] = useState("");
   const [releasing, setReleasing] = useState<number | null>(null);
@@ -189,7 +223,7 @@ function OrdersTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           <ul className="order-rows">
             {orders.map((o) => (
               <li key={o.id}>
-                <button className={`order-row ${o.status === "cancelled" ? "is-cancelled" : ""}`} onClick={() => open(o)} disabled={o.status === "cancelled"}>
+                <button className={`order-row ${o.status === "cancelled" ? "is-cancelled" : ""}`} onClick={() => open(o)}>
                   <span className="order-row__no">#{o.seq}</span>
                   <span className="order-row__main">
                     <span className="order-row__items">{o.lines.map((l) => `${l.name}×${l.qty}`).join("、")}</span>
@@ -202,6 +236,48 @@ function OrdersTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           </ul>
         )}
       </section>
+
+      {orders.length > 0 && (
+        <section className="panel">
+          <h3 className="panel__title">この日の注文をまとめて削除</h3>
+          <p className="hint">{dayText} の注文 {orders.length}件 をすべてゴミ箱に入れ、売上から外します。リハーサルの日などに使います。ゴミ箱から1件ずつ戻せます。</p>
+          <Btn variant="danger" onClick={() => { setConfirmText(""); setDeleteDay(true); }}>この日の注文をすべて削除</Btn>
+        </section>
+      )}
+
+      <details className="panel history" open={st.trash.length > 0 && st.trash.length <= 5}>
+        <summary className="panel__title">削除した注文（ゴミ箱） <span className="muted">{st.trash.length}件</span></summary>
+        {st.trash.length === 0 ? <p className="hint">削除した注文はありません。</p> : (
+          <ul className="order-rows">
+            {st.trash.map((o) => (
+              <li key={o.id} className="trash-row">
+                <span className="order-row__no">#{o.seq}</span>
+                <span className="order-row__main">
+                  <span className="order-row__items">{o.lines.map((l) => `${l.name}×${l.qty}`).join("、")}</span>
+                  <span className="order-row__meta">{dayLabelOf(o.day)} {timeOf(o.createdAt)} ・ {STATUS_JA[o.status]} ・ {yen(o.total)}</span>
+                </span>
+                <Btn onClick={() => void mutate(`/orders/${encodeURIComponent(o.id)}/restore`, "POST", {}, `注文 #${o.seq} を戻しました`)}>戻す</Btn>
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
+
+      {deleteDay && (
+        <Modal title={`${dayText} の注文をすべて削除しますか？`} onClose={() => setDeleteDay(false)}>
+          <Banner kind="warn">{orders.length}件 の注文が売上から外れます。本番の日には使わないでください。</Banner>
+          <p className="hint">消えるわけではなく、ゴミ箱に入ります。間違えたときはゴミ箱から戻せます。念のため、先に「売上」タブからCSVを書き出しておくと安心です。</p>
+          <label className="field">確認のため「削除」と入力してください
+            <input className="input" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoComplete="off" />
+          </label>
+          <div className="modal__actions">
+            <Btn variant="ghost" onClick={() => setDeleteDay(false)}>やめる</Btn>
+            <Btn variant="danger" disabled={confirmText !== "削除"} onClick={async () => {
+              if (await mutate(`/days/${day}/delete`, "POST", { confirm: confirmText }, `${dayText} の注文を削除しました（ゴミ箱から戻せます）`)) setDeleteDay(false);
+            }}>すべて削除する</Btn>
+          </div>
+        </Modal>
+      )}
 
       <details className="panel history">
         <summary className="panel__title">変更履歴 <span className="muted">{st.audit.length}件</span></summary>
@@ -219,10 +295,23 @@ function OrdersTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           <p className="modal__summary">{selected.lines.map((l) => `${l.name}×${l.qty}`).join("、")}<br /><b>{yen(selected.total)}</b> ・ {label(selected.ticket)}</p>
           {mode === "menu" && (
             <div className="modal__actions modal__actions--stack">
-              <Btn onClick={() => setMode("ticket")}>札の番号を変える</Btn>
-              <Btn variant="danger" onClick={() => setMode("cancel")}>キャンセルして返金する</Btn>
-              <p className="hint">内容を変えたいときは、キャンセルしてからレジで入力し直してください。</p>
+              {selected.status !== "cancelled" && <Btn onClick={() => setMode("ticket")}>札の番号を変える</Btn>}
+              {selected.status !== "cancelled" && <Btn variant="danger" onClick={() => setMode("cancel")}>キャンセルして返金する</Btn>}
+              <Btn variant="ghost" onClick={() => setMode("delete")}>削除する（テストの注文など）</Btn>
+              <p className="hint">お客さんに返金するときは「キャンセル」、テストや練習の注文を売上から外すときは「削除」です。</p>
             </div>
+          )}
+          {mode === "delete" && (
+            <>
+              <Banner kind="warn">この注文を売上から外して、ゴミ箱に入れます。本当のお客さんの注文なら、削除ではなく「キャンセル」にしてください。</Banner>
+              <p className="hint">ゴミ箱からいつでも戻せます（この画面の下の「削除した注文」）。</p>
+              <div className="modal__actions">
+                <Btn variant="ghost" onClick={() => setMode("menu")}>戻る</Btn>
+                <Btn variant="danger" onClick={async () => {
+                  if (await mutate(`/orders/${encodeURIComponent(selected.id)}/delete`, "POST", {}, `注文 #${selected.seq} を削除しました（ゴミ箱から戻せます）`)) setSelected(null);
+                }}>削除する</Btn>
+              </div>
+            </>
           )}
           {mode === "cancel" && (
             <>
@@ -556,11 +645,12 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const [color, setColor] = useState(st.shop.color);
   const [prefix, setPrefix] = useState(st.shop.prefix);
   const [count, setCount] = useState(String(st.shop.ticketCount));
+  const [start, setStart] = useState(st.shop.festivalStart ?? "");
   const [staffCode, setStaffCode] = useState("");
   const [adminPin, setAdminPin] = useState("");
   return (
     <>
-      <form className="panel" onSubmit={(e) => { e.preventDefault(); void mutate("/settings", "PUT", { name, color, prefix, ticketCount: Number(count) }, "保存しました"); }}>
+      <form className="panel" onSubmit={(e) => { e.preventDefault(); void mutate("/settings", "PUT", { name, color, prefix, ticketCount: Number(count), festivalStart: start || null }, "保存しました"); }}>
         <h3 className="panel__title">お店</h3>
         <label className="field">店舗名<input className="input" value={name} onChange={(e) => setName(e.target.value)} /></label>
         <div className="field-row">
@@ -569,6 +659,9 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           <label className="field">札の枚数<input className="input input--narrow" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ""))} /></label>
         </div>
         <p className="hint">札は「{ticketLabel(prefix, 5)}」のように表示されます。</p>
+        <label className="field">文化祭の初日<small className="muted">入れると、売上の日付が「1日目 {start ? dayLabel(start) : "11/20（金）"}」のように表示されます</small>
+          <input className="input input--date" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+        </label>
         <Btn type="submit" variant="accent">保存</Btn>
       </form>
       {st.shop.authRequired && (
@@ -613,7 +706,7 @@ function PrepPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
       <div className="prep-row">
         <div>
           <b>練習データを消す</b>
-          <p className="hint">リハーサルの注文・レジ締め・履歴をすべて消します。メニュー・価格・合言葉・店舗の設定は残ります。本番の前に1回だけ使ってください。</p>
+          <p className="hint">リハーサルの注文をすべてゴミ箱に入れ、レジ締めの記録を消します。メニュー・価格・店舗の設定・変更履歴は残ります。本番の前に1回だけ使ってください。</p>
         </div>
         <Btn variant="danger" onClick={() => { setConfirm(""); setDialog("reset"); }}>消去する</Btn>
       </div>
@@ -630,7 +723,7 @@ function PrepPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
       )}
       {dialog === "reset" && (
         <Modal title="練習データを消しますか？" onClose={() => setDialog(null)}>
-          <Banner kind="error">すべての日の注文・売上・レジ締め・変更履歴が消え、元に戻せません。必要ならCSVを先に書き出してください。</Banner>
+          <Banner kind="warn">すべての日の注文が売上から外れます（注文はゴミ箱に入り、「注文」タブから戻せます）。レジ締めの記録は消え、戻せません。</Banner>
           <p className="hint">残り数を設定している商品は、練習で売れた分が戻ります。</p>
           <label className="field">確認のため「消去」と入力してください
             <input className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
