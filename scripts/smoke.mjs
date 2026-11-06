@@ -33,7 +33,7 @@ function socket(shop, screen, code) {
 }
 
 // 合言葉・PIN を使う設定（REQUIRE_AUTH=1）かどうかで、確かめる内容を変える
-const AUTH = (await req("/api/shops")).data[0].authRequired;
+const AUTH = (await req("/api/shops/a/public")).data.authRequired;
 console.log(AUTH ? "合言葉・PIN あり の設定で確認します" : "合言葉・PIN なし（既定）の設定で確認します");
 async function authCheck(fn, msg) {
   if (!AUTH) { console.log(`SKIP ${msg}（合言葉・PIN なしの設定）`); return; }
@@ -53,7 +53,6 @@ await authCheck(async () => (await req(`${A}/admin/state`, { code: "yakisoba" })
 const before = (await req(`${A}/admin/state`, { code: "1234" })).data.menu.length;
 if (!AUTH) {
   check((await req(`${A}/admin/state`)).status === 200, "合言葉・PIN なしで管理画面を使える");
-  check((await req(`/api/master/summary`)).status === 200, "合言葉・PIN なしで全体の売上を見られる");
 }
 let st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "テスト焼きそば", price: 400 } })).data;
 st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "テストジュース", price: 150 } })).data;
@@ -124,9 +123,9 @@ const csvBytes = new Uint8Array(await fetch(`${BASE}${A}/admin/csv`, { headers: 
 const csv = new TextDecoder().decode(csvBytes);
 check(csvBytes[0] === 0xef && csvBytes[1] === 0xbb && csvBytes[2] === 0xbf && csv.startsWith("注文番号") && csv.includes("テスト焼きそば"), "CSVを書き出せる（BOM付き）");
 
-const master = await req(`/api/master/summary`, { code: MASTER });
-check(master.status === 200 && master.data.length === 2 && master.data[0].summary.sales === 950 && master.data[1].summary.sales === 0, "全体の売上で2店舗を別々に集計");
-await authCheck(async () => (await req(`/api/master/summary`, { code: "1234" })).status === 401, "店舗の管理PINでは全体の売上を見られない");
+const sumA = (await req(`${A}/admin/summary`, { code: "1234" })).data;
+const sumB = (await req(`${B}/admin/summary`, { code: "5678" })).data;
+check(sumA.sales === 950 && sumB.sales === 0, "店舗ごとに別々に集計（ほかの店舗の売上は混ざらない）");
 
 // ---- 残り数・割引・レジからの取り消し ----
 st = (await req(`${A}/admin/menu`, { code: "1234", method: "POST", body: { name: "限定品", price: 200, stock: 2 } })).data;
@@ -219,7 +218,7 @@ st = (await req(`${A}/admin/reset`, { code: "1234", method: "POST", body: { conf
 check(st.orders.length === 0 && st.days.length === 0, "練習データを消すと注文がなくなる");
 check(st.menu.find((x) => x.id === limited.id).stock === 2, "練習で売れた分の残り数が戻る");
 check(st.menu.length > 0 && (!AUTH || (await req(`${A}/auth`, { method: "POST", body: { code: "yakisoba" } })).data.role === "staff"), "メニュー（と合言葉）は残る");
-check((await req(`/api/master/summary`, { code: MASTER })).data[0].summary.sales === 0, "全体の売上からも消える");
+check((await req(`${A}/admin/summary`, { code: "1234" })).data.sales === 0, "売上からも消える");
 
 // ---- 各部が自分の店舗をつくる（店舗ごとに分かれ、リンクで守られる） ----
 const c1 = await req(`/api/shops`, { method: "POST", body: { name: "スモーク店", organization: "テスト部", color: "#15803d", prefix: "S", ticketCount: 20 } });
@@ -237,7 +236,7 @@ const c2 = await req(`/api/shops`, { method: "POST", body: { name: "スモーク
 check(c2.status === 201 && c2.data.id !== c1.data.id, "別の店舗をつくれる");
 check((await req(`/api/shops/${c2.data.id}/admin/state`, { code: c1.data.adminKey })).status === 401, "ほかの店舗のキーでは管理できない");
 check((await req(`${S}/init`, { method: "POST", body: { name: "のっとり" } })).status === 404, "外から店舗の初期化はできない");
-check((await req(`/api/shops/zzzzzzzzzz/public`)).status === 404, "作られていない店舗IDは見つからない");
+check((await req(`/api/shops/zzzzzzzzzz/public`)).status === 404 && (await req(`/api/shops/c/public`)).status === 404, "作られていない店舗IDは見つからない（デモ以外は自動で作られない）");
 check((await req(`/api/shops`, { method: "POST", body: { name: "" } })).status === 400, "店舗名が空では作れない");
 const rot = await req(`${S}/admin/keys`, { code: c1.data.adminKey, method: "POST", body: { rotate: "staff" } });
 check(rot.status === 200 && rot.data.staffKey && rot.data.staffKey !== c1.data.staffKey, "部員用リンクを作り直せる");

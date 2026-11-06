@@ -9,9 +9,10 @@ import type {
 import { DENOMINATIONS, MENU_COLORS, STAFF_CANCEL_WINDOW_MS } from "../shared/types";
 import type { Env } from "./index";
 
-const DEFAULT_SHOPS: Record<string, { name: string; color: string; prefix: string }> = {
-  a: { name: "焼き鳥", color: "#1565c0", prefix: "A" },
-  b: { name: "とうもろこし", color: "#c2410c", prefix: "B" },
+/** ローカル開発（DEV_SEED=1）だけで使うデモの店舗。本番では店舗は「店舗をつくる」からしか作れない */
+const DEMO_SHOPS: Record<string, { name: string; color: string; prefix: string }> = {
+  a: { name: "デモ店A", color: "#1565c0", prefix: "A" },
+  b: { name: "デモ店B", color: "#c2410c", prefix: "B" },
 };
 // [商品名, 価格, 残り数（null なら数えない）]
 const DEMO_MENUS: Record<string, [string, number, number | null][]> = {
@@ -60,13 +61,6 @@ function parseStock(v: unknown): number | null {
 function randomKey(bytes: number): string {
   const b = crypto.getRandomValues(new Uint8Array(bytes));
   return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 const ROLE_RANK: Record<Role, number> = { display: 0, staff: 1, admin: 2, master: 3 };
@@ -137,11 +131,6 @@ export class ShopDO extends DurableObject<Env> {
     }
   }
 
-  /** テック部の最初の2店舗（wrangler.jsonc の SHOPS）。リンクなしでも開ける昔からの店舗 */
-  private isLegacy(id: string) {
-    return (this.env.SHOPS ?? "").split(",").map((x) => x.trim()).includes(id);
-  }
-
   /** 各部が作った店舗の初期設定。管理用・部員用のキー（リンク）を作って返す。キーは推測できない長さにする */
   private async initShop(id: string, b: { name?: string; organization?: string; color?: string; prefix?: string; ticketCount?: number }) {
     if (this.get("shopId")) throw new HttpError(409, "この店舗はすでにあります");
@@ -181,9 +170,9 @@ export class ShopDO extends DurableObject<Env> {
 
   private async ensureShopId(id: string) {
     if (!this.get("shopId")) {
-      // 昔からの店舗（SHOPS）だけは最初のアクセスで作る。それ以外は「店舗をつくる」からしか作れない
-      if (!this.isLegacy(id) && !DEFAULT_SHOPS[id]) throw new HttpError(404, "店舗が見つかりません。リンクが正しいか確認してください");
-      const d = DEFAULT_SHOPS[id] ?? { name: `${id.toUpperCase()}店`, color: "#334155", prefix: id.toUpperCase() };
+      // 店舗は「店舗をつくる」からしか作れない。ローカル開発だけ、デモの店舗を最初のアクセスで作る
+      const d = this.env.DEV_SEED === "1" ? DEMO_SHOPS[id] : undefined;
+      if (!d) throw new HttpError(404, "店舗が見つかりません。リンクが正しいか確認してください");
       this.set("shopId", id);
       this.set("name", d.name);
       this.set("color", d.color);
@@ -221,8 +210,6 @@ export class ShopDO extends DurableObject<Env> {
 
   private async roleFor(code: string | null): Promise<Role | null> {
     if (!code) return null;
-    // テック部の全体PINは昔からの店舗だけで使える
-    if (this.env.MASTER_PIN && this.isLegacy(this.get("shopId") ?? "") && timingSafeEqual(code, this.env.MASTER_PIN)) return "master";
     const h = await sha256(`${this.get("shopId")}:${code}`);
     if (this.get("adminHash") === h) return "admin";
     if (this.get("staffHash") === h) return "staff";
@@ -702,7 +689,7 @@ export class ShopDO extends DurableObject<Env> {
       }
       if (b.adminPin != null) {
         if (String(b.adminPin).length < 4) throw new HttpError(400, "管理PINは4文字以上にしてください");
-        if (role !== "master" && this.get("adminHash") == null) throw new HttpError(403, "最初の管理PINはテック部の全体PINで設定してください");
+        if (role !== "master" && this.get("adminHash") == null) throw new HttpError(403, "管理用リンクで操作してください");
         this.set("adminHash", await sha256(`${sid}:${b.adminPin}`));
       }
       if (this.get("staffHash") != null && this.get("staffHash") === this.get("adminHash")) {

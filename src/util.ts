@@ -50,7 +50,6 @@ export function todayJst(): string {
 
 export const codeKey = (shopId: string) => `code:${shopId}`;
 export const adminKey = (shopId: string) => `admin:${shopId}`;
-export const MASTER_KEY = "code:master";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

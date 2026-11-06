@@ -54,4 +54,5 @@ export function newShopId(): string {
   return [...b].map((x) => chars[x % chars.length]).join("");
 }
 
-export const SHOP_ID_RE = /^[2-9a-hjkmnp-z]{10}$/;
+/** 店舗IDの形。新しい店舗は10文字。以前からある短いID（a, b など）もそのまま使える */
+export const SHOP_ID_RE = /^[a-z0-9]{1,16}$/;

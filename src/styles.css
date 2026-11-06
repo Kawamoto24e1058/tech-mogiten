@@ -942,3 +942,31 @@ h1, h2, h3 { margin: 0; line-height: 1.3; }
 .check { display: flex; gap: 10px; align-items: flex-start; font-size: 0.92rem; }
 .check input { width: 22px; height: 22px; margin-top: 2px; flex-shrink: 0; }
 a.btn { text-decoration: none; }
+
+/* ---------- スタート画面（はじめて開いた端末） ---------- */
+.brand-mark { display: inline-grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px; background: #18181b; color: #fff; font-weight: 800; font-size: 1.2rem; }
+.brand-mark--lg { width: 64px; height: 64px; border-radius: 16px; font-size: 2rem; }
+.home__head { display: flex; align-items: center; gap: 12px; }
+.start { width: 100%; max-width: 720px; margin: 0 auto; padding: 40px 16px 48px; display: grid; gap: 28px; }
+.start__hero { display: grid; justify-items: center; gap: 10px; text-align: center; }
+.start__title { font-size: clamp(1.8rem, 6vw, 2.4rem); letter-spacing: -0.01em; }
+.start__lead { margin: 0; color: var(--muted); line-height: 1.7; }
+.start__choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.start-card { display: grid; align-content: start; gap: 6px; padding: 18px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--edge); text-decoration: none; color: var(--text); }
+.start-card--primary { background: #18181b; border-color: #18181b; color: #fff; }
+.start-card--primary .start-card__who, .start-card--primary .start-card__desc { color: #d4d4d8; }
+.start-card--primary:hover { background: #27272a; }
+.start-card__who { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.start-card__title { font-size: 1.35rem; }
+.start-card__desc { color: var(--muted); font-size: 0.92rem; line-height: 1.6; }
+.start__features { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.start__features div { display: grid; gap: 2px; padding: 14px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line); }
+.start__features span { color: var(--muted); font-size: 0.88rem; line-height: 1.55; }
+.start__steps h2 { font-size: 1.05rem; margin-bottom: 8px; }
+.start__steps ol { margin: 0; padding-left: 1.4em; display: grid; gap: 6px; line-height: 1.6; }
+.start__foot { margin: 0; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.join-link { display: grid; gap: 6px; margin-top: 6px; }
+.join-link__row { display: flex; gap: 8px; }
+.join-link__row .input { flex: 1; min-width: 0; }
+.join-link--compact { margin: 0; padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); }
+.home-more { display: grid; gap: 10px; }

@@ -23,8 +23,7 @@
 5. 「保存してデプロイ」を押す。ビルドのログが流れ、数分で終わる
 6. Worker の画面に表示される `https://tech-mogiten.<アカウント名>.workers.dev` が本番の URL
 
-> 既定では合言葉・PIN を使いません。使う場合は、Worker の **設定 → 変数とシークレット** で
-> 変数 `REQUIRE_AUTH` = `1` と、シークレット `MASTER_PIN`（全体PIN）を追加します。
+> 変数・シークレットの設定はいりません。店舗は各部・団体が「店舗をつくる」から作り、共有リンクで守られます。
 
 ビルドやデプロイが失敗したら、ログの赤い行から最後までを共有してください。
 
@@ -44,10 +43,9 @@ npm install
 npx wrangler login
 ```
 
-### 2. 全体PINを設定して公開する
+### 2. 公開する
 
 ```bash
-npx wrangler secret put MASTER_PIN   # 「Worker がまだない」と聞かれたら作成を選ぶ
 npm run deploy
 ```
 
@@ -57,7 +55,6 @@ npm run deploy
 |---|---|
 | Durable Objects に関するエラー（無料プランで使えない等） | エラー全文を共有してください |
 | `Authentication error` | `npx wrangler login` をやり直す |
-| 全体PINが違うと言われる | `MASTER_PIN` を入れ直す（A なら管理画面、B なら `wrangler secret put`） |
 
 ## 最初の設定（公開後に1回だけ）
 

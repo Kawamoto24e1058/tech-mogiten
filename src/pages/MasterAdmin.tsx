@@ -4,7 +4,7 @@ import { dayLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Money, Page, accentStyle } from "../components/ui";
 import { ItemRanking } from "../components/Summary";
 import { myShops } from "../myshops";
-import { adminKey, api, MASTER_KEY, todayJst } from "../util";
+import { adminKey, api, todayJst } from "../util";
 
 const CLUB = { name: "まとめて見る", color: "#374151", prefix: "全" };
 
@@ -21,7 +21,7 @@ export function MasterAdmin() {
     const ids = myShops().map((m) => m.id);
     const results = await Promise.all(
       ids.map(async (id) => {
-        const key = localStorage.getItem(adminKey(id)) ?? localStorage.getItem(MASTER_KEY) ?? "";
+        const key = localStorage.getItem(adminKey(id)) ?? "";
         try {
           return await api<{ shop: ShopPublic; summary: DaySummary }>(`/api/shops/${encodeURIComponent(id)}/summary?day=${day}`, key);
         } catch {

@@ -10,11 +10,11 @@ import { MasterAdmin } from "./pages/MasterAdmin";
 import { Register } from "./pages/Register";
 import { ShopAdmin } from "./pages/ShopAdmin";
 import { rememberShop } from "./myshops";
-import { adminKey, api, ApiError, codeKey, load, MASTER_KEY, save } from "./util";
+import { adminKey, api, ApiError, codeKey, load, save } from "./util";
 
 /**
  * 店舗の情報（名前・色・リンクで保護しているか）。端末に覚えている値ですぐ表示し、裏でサーバーに確かめる。
- * 店舗ごとに「保護しているか」が違う（各部が作った店舗はリンクで保護、テック部の昔からの店舗は誰でも開ける）
+ * 店舗ごとに「保護しているか」が違う（「店舗をつくる」で作った店舗はリンクで保護。以前からある店舗は「保護する」を押すまで誰でも開ける）
  */
 function useShopInfo(shopId: string) {
   const cacheKey = `shop:${shopId}`;
@@ -79,8 +79,7 @@ function StaffScreen({ shop, screen }: { shop: ShopPublic; screen: "register" | 
 
 function AdminScreen({ shop }: { shop: ShopPublic }) {
   const [code, setCode, clear] = useStoredCode(adminKey(shop.id));
-  const master = localStorage.getItem(MASTER_KEY);
-  const effective = shop.authRequired ? code ?? master : "";
+  const effective = shop.authRequired ? code : "";
   if (effective == null) {
     return (
       <CodeGate
@@ -95,7 +94,7 @@ function AdminScreen({ shop }: { shop: ShopPublic }) {
       />
     );
   }
-  return <ShopAdmin shopId={shop.id} code={effective} onAuthError={() => { clear(); if (!code) localStorage.removeItem(MASTER_KEY); location.reload(); }} />;
+  return <ShopAdmin shopId={shop.id} code={effective} onAuthError={() => { clear(); location.reload(); }} />;
 }
 
 function ShopRoute({ shopId, screen }: { shopId: string; screen: string }) {

@@ -11,7 +11,7 @@ export interface MyShop {
   color: string;
   prefix: string;
   organization?: string | null;
-  /** リンクなしで誰でも開ける店舗（テック部の昔からの店舗） */
+  /** リンクなしで誰でも開ける店舗（以前からあり、まだ保護していない店舗） */
   open?: boolean;
 }
 
@@ -27,7 +27,7 @@ export function rememberShop(s: Pick<ShopPublic, "id" | "name" | "color" | "pref
 }
 
 /**
- * 以前の版はトップにテック部の店舗を全員に出していた。その端末（使ったことがある端末）だけ、
+ * 以前の版はトップに決まった店舗を全員に出していた。その端末（使ったことがある端末）だけ、
  * 1回だけ「この端末の店舗」に移す。新しい端末にはほかの店舗を出さない
  */
 export function migrateOldShops() {

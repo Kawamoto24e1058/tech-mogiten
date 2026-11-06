@@ -21,15 +21,20 @@ export function Home() {
   }, [joined]);
 
   const entries: MyShop[] = mine;
+  // まだ店舗がない端末には、最初の案内（スタート画面）を出す
+  if (entries.length === 0) return <Start />;
   const lastShop = last ? entries.find((s) => s.id === last.shopId) : undefined;
   const canAdminAny = entries.some((e) => e.open || localStorage.getItem(adminKey(e.id)));
 
   return (
     <div className="page home-page">
       <main className="home">
-        <header>
-          <h1 className="home__title">模擬店レジ</h1>
-          <p className="home__lead">自分のお店の、担当の画面を押してください。</p>
+        <header className="home__head">
+          <span className="brand-mark" aria-hidden>¥</span>
+          <div>
+            <h1 className="home__title">模擬店レジ</h1>
+            <p className="home__lead">自分のお店の、担当の画面を押してください。</p>
+          </div>
         </header>
 
         {joined && entries.some((e) => e.id === joined) && (
@@ -42,14 +47,6 @@ export function Home() {
             <span className="resume__target">{lastShop.name} の {SCREEN_NAME[last.screen]}</span>
             <IconNext size={24} />
           </a>
-        )}
-
-        {entries.length === 0 && (
-          <section className="home-empty">
-            <h2>まだ店舗がありません</h2>
-            <p>部員の人は、代表者から届いた<b>「部員用リンク」</b>をこの端末で開いてください。お店がここに出てきます。</p>
-            <p>代表者の人は、下の「新しい店舗をつくる」から始めてください。</p>
-          </section>
         )}
 
         {entries.map((s) => {
@@ -85,10 +82,13 @@ export function Home() {
           );
         })}
 
-        <a className="home-new" href="/new">
-          <b>＋ 新しい店舗をつくる</b>
-          <span>部・クラス・団体の代表者向け。数分で始められます</span>
-        </a>
+        <div className="home-more">
+          <a className="home-new" href="/new">
+            <b>＋ 新しい店舗をつくる</b>
+            <span>部・クラス・団体の代表者向け</span>
+          </a>
+          <JoinByLink compact />
+        </div>
 
         <InstallCard />
 
@@ -124,5 +124,76 @@ function InstallCard() {
         </ol>
       )}
     </section>
+  );
+}
+
+/** はじめて開いた端末のスタート画面 */
+function Start() {
+  return (
+    <div className="page home-page">
+      <main className="start">
+        <header className="start__hero">
+          <span className="brand-mark brand-mark--lg" aria-hidden>¥</span>
+          <h1 className="start__title">模擬店レジ</h1>
+          <p className="start__lead">文化祭・学園祭の模擬店のための、かんたん会計アプリ。<br />スマホだけで、レジ・厨房・呼び出し表示がつながります。</p>
+        </header>
+
+        <section className="start__choices" aria-label="はじめかた">
+          <a className="start-card start-card--primary" href="/new">
+            <span className="start-card__who">代表者の方</span>
+            <b className="start-card__title">店舗をつくる</b>
+            <span className="start-card__desc">店舗名を入れるだけで、数分で始められます。部員に配るリンクができます。</span>
+          </a>
+          <div className="start-card">
+            <span className="start-card__who">部員の方</span>
+            <b className="start-card__title">リンクを開く</b>
+            <span className="start-card__desc">代表者からLINEなどで届いた「部員用リンク」を、この端末で開いてください。貼り付けても開けます。</span>
+            <JoinByLink />
+          </div>
+        </section>
+
+        <section className="start__features" aria-label="特長">
+          <div><b>インストール不要</b><span>URLを開くだけ。ホーム画面に追加すればアプリのように使えます</span></div>
+          <div><b>電波が切れても会計できる</b><span>つながったら自動で送ります</span></div>
+          <div><b>お店ごとに分かれたデータ</b><span>売上やメニューは、ほかのお店からは見えません</span></div>
+        </section>
+
+        <section className="start__steps" aria-label="使い方">
+          <h2>使い方</h2>
+          <ol>
+            <li><b>店舗をつくる</b>（代表者）: 店舗名・色を決める</li>
+            <li><b>メニューを登録</b>: 商品と値段、まとめ買い割引など</li>
+            <li><b>部員用リンクを配る</b>: 部員は一度開くだけで、レジ・厨房が使えます</li>
+            <li><b>営業する</b>: 札を渡して会計 → 厨房で作る → 呼び出し表示で番号を出す</li>
+          </ol>
+        </section>
+
+        <p className="start__foot">お客さんの名前や連絡先などの個人情報は入力しないでください。</p>
+      </main>
+    </div>
+  );
+}
+
+/** 届いたリンク（またはキー）を貼り付けて開く */
+function JoinByLink({ compact }: { compact?: boolean }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const open = () => {
+    const m = /\/([a-z0-9]{1,16})\/join#k=([A-Za-z0-9_-]+)/.exec(text.trim());
+    if (!m) {
+      setError("リンク全体を貼り付けてください（…/join#k=… の形）");
+      return;
+    }
+    location.href = `/${m[1]}/join#k=${m[2]}`;
+  };
+  return (
+    <form className={`join-link ${compact ? "join-link--compact" : ""}`} onSubmit={(e) => { e.preventDefault(); open(); }}>
+      {compact && <b>届いたリンクを開く</b>}
+      <div className="join-link__row">
+        <input className="input" value={text} onChange={(e) => { setText(e.target.value); setError(""); }} placeholder="リンクを貼り付け" aria-label="部員用・管理用リンク" />
+        <button className="btn" type="submit" disabled={!text.trim()}>開く</button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </form>
   );
 }

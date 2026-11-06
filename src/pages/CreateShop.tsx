@@ -86,7 +86,7 @@ export function CreateShop() {
           <label className="field">店舗名<small className="muted">お客さんに見える名前（例: 焼き鳥、たこ焼き）</small>
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={30} required autoFocus />
           </label>
-          <label className="field">部・団体名<small className="muted">任意（例: テック部、2年3組）</small>
+          <label className="field">部・団体名<small className="muted">任意（例: 写真部、2年3組）</small>
             <input className="input" value={organization} onChange={(e) => setOrganization(e.target.value)} maxLength={40} />
           </label>
           <div className="field">お店の色
