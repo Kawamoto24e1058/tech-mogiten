@@ -9,6 +9,7 @@ import { Kitchen } from "./pages/Kitchen";
 import { MasterAdmin } from "./pages/MasterAdmin";
 import { Register } from "./pages/Register";
 import { ShopAdmin } from "./pages/ShopAdmin";
+import { Setup } from "./pages/Setup";
 import { rememberShop } from "./myshops";
 import { adminKey, api, ApiError, codeKey, load, save } from "./util";
 
@@ -77,7 +78,7 @@ function StaffScreen({ shop, screen }: { shop: ShopPublic; screen: "register" | 
   return screen === "register" ? <Register shopId={shop.id} code={code} onAuthError={clear} /> : <Kitchen shopId={shop.id} code={code} onAuthError={clear} />;
 }
 
-function AdminScreen({ shop }: { shop: ShopPublic }) {
+function AdminScreen({ shop, setup }: { shop: ShopPublic; setup?: boolean }) {
   const [code, setCode, clear] = useStoredCode(adminKey(shop.id));
   const effective = shop.authRequired ? code : "";
   if (effective == null) {
@@ -94,6 +95,7 @@ function AdminScreen({ shop }: { shop: ShopPublic }) {
       />
     );
   }
+  if (setup) return <Setup shopId={shop.id} code={effective} />;
   return <ShopAdmin shopId={shop.id} code={effective} onAuthError={() => { clear(); location.reload(); }} />;
 }
 
@@ -106,6 +108,7 @@ function ShopRoute({ shopId, screen }: { shopId: string; screen: string }) {
   if (!info) return <Loading />;
   if (screen === "register" || screen === "kitchen") return <StaffScreen key={`${shopId}/${screen}`} shop={info} screen={screen} />;
   if (screen === "admin") return <AdminScreen shop={info} />;
+  if (screen === "setup") return <AdminScreen shop={info} setup />;
   return <Home />;
 }
 

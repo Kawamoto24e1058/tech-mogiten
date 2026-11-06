@@ -6,7 +6,7 @@ import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
 import { ItemRanking, Kpis, SlotBars, SubStats } from "../components/Summary";
 import { adminKey, api, ApiError, codeKey, timeOf, todayJst } from "../util";
 import { LinkRow } from "../components/ShareLinks";
-import { displayLink, joinLink } from "../myshops";
+import { displayLink, forgetShop, joinLink } from "../myshops";
 
 interface AdminState {
   shop: ShopPublic;
@@ -124,6 +124,9 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
           </label>
         )}
         {error && <Banner kind="error">{error}</Banner>}
+        {st && st.menu.length === 0 && (
+          <Banner kind="info" action={<a className="link banner__action" href={`/${shopId}/setup?step=1`}>続ける</a>}>まだ商品がありません。「はじめの設定」で、商品・割引・番号札・共有を順番に設定できます。</Banner>
+        )}
         {info && <div className="toast" role="status">✓ {info}</div>}
         {!st || !sum ? <p className="hint">読み込んでいます…</p> : (
           <>
@@ -668,6 +671,7 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
       </form>
       <SharePanel st={st} mutate={mutate} />
       <PrepPanel st={st} mutate={mutate} />
+      <DeleteShopPanel st={st} />
     </>
   );
 }
@@ -739,6 +743,46 @@ function SharePanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           <div className="modal__actions">
             <Btn variant="ghost" onClick={() => setConfirm(null)}>やめる</Btn>
             <Btn variant="danger" onClick={() => void run(confirm)}>作り直す</Btn>
+          </div>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
+/** 店舗そのものを削除する（文化祭が終わった・作り直したいとき）。元に戻せないので店舗名の入力で確認 */
+function DeleteShopPanel({ st }: { st: AdminState }) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/shops/${encodeURIComponent(st.shop.id)}/admin/shop/delete`, localStorage.getItem(adminKey(st.shop.id)) ?? "", { method: "POST", body: JSON.stringify({ confirm }) });
+      forgetShop(st.shop.id);
+      location.replace("/");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "削除できませんでした");
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="panel">
+      <h3 className="panel__title">店舗を削除</h3>
+      <p className="hint">文化祭が終わったときなどに使います。メニュー・売上・注文・設定がすべて消え、共有リンクも使えなくなります。元に戻せません。</p>
+      <Btn variant="danger" onClick={() => { setConfirm(""); setOpen(true); }}>店舗を削除する</Btn>
+      {open && (
+        <Modal title="店舗を削除しますか？" onClose={() => setOpen(false)}>
+          <Banner kind="error">「{st.shop.name}」のデータがすべて消え、元に戻せません。売上を残すなら、先に「売上」タブで日ごとのCSVを書き出してください。</Banner>
+          <label className="field">確認のため、店舗名「{st.shop.name}」を入力してください
+            <input className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
+          </label>
+          {error && <Banner kind="error">{error}</Banner>}
+          <div className="modal__actions">
+            <Btn variant="ghost" onClick={() => setOpen(false)}>やめる</Btn>
+            <Btn variant="danger" disabled={confirm.trim() !== st.shop.name || busy} onClick={() => void run()}>{busy ? "削除しています…" : "削除する"}</Btn>
           </div>
         </Modal>
       )}

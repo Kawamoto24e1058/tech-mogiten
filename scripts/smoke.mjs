@@ -6,7 +6,13 @@ const MASTER = process.env.MASTER_PIN ?? "0000";
 let failed = 0;
 const check = (cond, msg) => { console.log(`${cond ? "OK  " : "NG  "} ${msg}`); if (!cond) failed++; };
 
-async function req(path, { code, method = "GET", body } = {}) {
+async function req(path, opts = {}) {
+  // 開発サーバーの中継がまれに失敗する（fetch failed）ため、サーバー側のエラー（5xx）は1回だけやり直す
+  const r = await req1(path, opts);
+  return r.status >= 500 ? req1(path, opts) : r;
+}
+
+async function req1(path, { code, method = "GET", body } = {}) {
   const res = await fetch(BASE + path, {
     method,
     headers: { ...(body ? { "content-type": "application/json" } : {}), ...(code ? { authorization: `Bearer ${code}` } : {}) },
@@ -248,6 +254,13 @@ check((await sdisp.until((m) => m.type === "display")).data.shop.name === "ス�
 const sbad = socket(c1.data.id, "register");
 check(!(await sbad.opened.then(() => true, () => false)), "キーなしではレジにつながらない");
 sdisp.ws.close();
+
+// ---- 店舗の削除 ----
+check((await req(`/api/shops/${c2.data.id}/admin/shop/delete`, { code: c2.data.staffKey, method: "POST", body: { confirm: "スモーク店2" } })).status === 403, "部員用キーでは店舗を削除できない");
+check((await req(`/api/shops/${c2.data.id}/admin/shop/delete`, { code: c2.data.adminKey, method: "POST", body: { confirm: "ちがう名前" } })).status === 400, "店舗名が違うと削除できない");
+check((await req(`/api/shops/${c2.data.id}/admin/shop/delete`, { code: c2.data.adminKey, method: "POST", body: { confirm: "スモーク店2" } })).status === 200, "管理用キーと店舗名で店舗を削除できる");
+check((await req(`/api/shops/${c2.data.id}/public`)).status === 404 && (await req(`/api/shops/${c2.data.id}/admin/state`, { code: c2.data.adminKey })).status === 404, "削除した店舗は見つからず、キーも使えない");
+check((await req(`${S}/public`)).status === 200, "ほかの店舗は消えない");
 
 [reg, kit, disp].forEach((s) => s.ws.close());
 console.log(failed ? `\n${failed}件 失敗` : "\nすべて成功");

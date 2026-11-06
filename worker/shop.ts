@@ -837,6 +837,28 @@ export class ShopDO extends DurableObject<Env> {
       return json(this.adminState(day));
     }
     // リハーサルの注文を消す。メニュー・設定・合言葉は残す。残り数は練習で売れた分を戻す
+    // 店舗そのものを削除する（データをすべて消す。元に戻せない）。確認のため店舗名を入力してもらう
+    if (p === "/shop/delete" && m === "POST") {
+      const { confirm } = await this.body<{ confirm: string }>(req);
+      if (String(confirm ?? "").trim() !== (this.get("name") ?? "")) throw new HttpError(400, "確認のため、店舗名を正しく入力してください");
+      const id = this.get("shopId") ?? "";
+      for (const ws of this.ctx.getWebSockets()) {
+        try {
+          ws.close(4004, "店舗が削除されました");
+        } catch {
+          // すでに閉じている
+        }
+      }
+      await this.ctx.storage.deleteAll();
+      this.migrate(); // 空の状態に戻す（以後は「店舗が見つかりません」）
+      try {
+        await this.env.REGISTRY.get(this.env.REGISTRY.idFromName("main")).release(id);
+      } catch {
+        // 記録の削除に失敗しても、店舗のデータは消えている
+      }
+      return json({ ok: true });
+    }
+
     if (p === "/reset" && m === "POST") {
       const { confirm } = await this.body<{ confirm: string }>(req);
       if (confirm !== "消去") throw new HttpError(400, "確認のため「消去」と入力してください");
