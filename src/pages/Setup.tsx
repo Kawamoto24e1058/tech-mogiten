@@ -21,7 +21,8 @@ export function SetupSteps({ step }: { step: number }) {
     <ol className="setup-steps" aria-label="設定の手順">
       {STEPS.map((label, i) => (
         <li key={label} className={i < step ? "is-done" : i === step ? "is-on" : ""} aria-current={i === step ? "step" : undefined}>
-          <span className="setup-steps__no">{i < step ? "✓" : i + 1}</span>
+          <span className="setup-steps__bar" aria-hidden />
+          <span className="setup-steps__no">{String(i + 1).padStart(2, "0")}{i < step && <span className="sr-only">（済み）</span>}</span>
           <span className="setup-steps__label">{label}</span>
         </li>
       ))}
@@ -112,6 +113,7 @@ function MenuStep({ st, call, reload, next }: { st: State; call: Call; reload: (
   const items = st.menu.filter((m) => m.price >= 0);
   return (
     <section className="panel setup-panel">
+      <p className="eyebrow">Step 02 / 06</p>
       <h2 className="setup-panel__title">商品を登録しましょう</h2>
       <p className="hint">レジのボタンになります。味違い（タレ・塩など）は別々の商品にすると、厨房にも正しく伝わります。色・残り数・並び順は、あとで管理画面から変えられます。</p>
       <label className="setup-import">
@@ -168,6 +170,7 @@ function DiscountStep({ st, call, reload, back, next }: { st: State; call: Call;
   };
   return (
     <section className="panel setup-panel">
+      <p className="eyebrow">Step 03 / 06</p>
       <h2 className="setup-panel__title">割引を使いますか？（任意）</h2>
       <p className="hint">「2本で300円」のような、まとめて買うと安くなる割引です。レジで自動で引かれます。使わないなら「次へ」で飛ばせます。</p>
       {st.discounts.length > 0 && (
@@ -209,13 +212,14 @@ function TicketStep({ st, call, reload, back, next }: { st: State; call: Call; r
   };
   return (
     <section className="panel setup-panel">
+      <p className="eyebrow">Step 04 / 06</p>
       <h2 className="setup-panel__title">番号札と開催日</h2>
       <p className="hint">会計のときにお客さんに渡す札です。用意する枚数に合わせてください（行列の長さの目安 × 1.5 くらいが安心です）。</p>
       <div className="field-row">
-        <label className="field">札の記号<input className="input input--narrow" value={prefix} maxLength={3} onChange={(e) => setPrefix(e.target.value.toUpperCase())} /></label>
         <label className="field">札の枚数<input className="input input--narrow" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
+        <label className="field">札の記号<small className="muted">任意</small><input className="input input--narrow" value={prefix} maxLength={3} placeholder="なし" onChange={(e) => setPrefix(e.target.value.toUpperCase())} /></label>
       </div>
-      <p className="hint">札は「{ticketLabel(prefix || "A", 5)}」のように表示されます。札を使わないお店でも、そのままで大丈夫です（会計のときに「札なし」を選べます）。</p>
+      <p className="hint">札は「{ticketLabel(prefix, 5)}」のように表示されます。記号は、札にもともと文字が書いてあるときだけ入れてください（空欄なら番号だけ）。札を使わないお店でも、そのままで大丈夫です（会計のときに「札なし」を選べます）。</p>
       <label className="field">文化祭の初日<small className="muted">任意。売上が「1日目」「2日目」と表示されます</small>
         <input className="input input--date" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
       </label>
@@ -232,6 +236,7 @@ function ShareStep({ st, back, next }: { st: State; back: () => void; next: () =
   const [saved, setSaved] = useState(!recovery);
   return (
     <section className="panel setup-panel">
+      <p className="eyebrow">Step 05 / 06</p>
       <h2 className="setup-panel__title">部員にリンクを配りましょう</h2>
       <p className="hint">部員用リンクを、部員のグループ（LINE など）に送ってください。部員は自分の端末で一度開くだけで、レジ・厨房が使えるようになります。</p>
       {st.staffKey && <LinkRow title="部員用リンク" note="レジ・厨房で使う部員に送ります" url={joinLink(id, st.staffKey)} />}
@@ -248,6 +253,7 @@ function DoneStep({ st }: { st: State }) {
   const id = st.shop.id;
   return (
     <section className="panel setup-panel">
+      <p className="eyebrow">Step 06 / 06</p>
       <h2 className="setup-panel__title">準備ができました</h2>
       <p>本番の前に、部員みんなで<b>リハーサル</b>をしておくと安心です。</p>
       <ol className="steps">

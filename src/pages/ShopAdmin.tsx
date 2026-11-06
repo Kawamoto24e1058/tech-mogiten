@@ -671,10 +671,10 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         <label className="field">店舗名<input className="input" value={name} onChange={(e) => setName(e.target.value)} /></label>
         <div className="field-row">
           <label className="field">色<span className="row"><input className="color-input" type="color" value={color} onChange={(e) => setColor(e.target.value)} aria-label="店舗の色" /></span></label>
-          <label className="field">札の記号<input className="input input--narrow" value={prefix} maxLength={3} onChange={(e) => setPrefix(e.target.value)} placeholder="A" /></label>
+          <label className="field">札の記号（任意）<input className="input input--narrow" value={prefix} maxLength={3} onChange={(e) => setPrefix(e.target.value.toUpperCase())} placeholder="なし" /></label>
           <label className="field">札の枚数<input className="input input--narrow" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, ""))} /></label>
         </div>
-        <p className="hint">札は「{ticketLabel(prefix, 5)}」のように表示されます。</p>
+        <p className="hint">札は「{ticketLabel(prefix, 5)}」のように表示されます。記号は札に文字が書いてあるときだけ（空欄なら番号だけ）。</p>
         <label className="field">文化祭の初日<small className="muted">入れると、売上の日付が「1日目 {start ? dayLabel(start) : "11/20（金）"}」のように表示されます</small>
           <input className="input input--date" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
         </label>

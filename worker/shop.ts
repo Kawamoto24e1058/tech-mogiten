@@ -156,7 +156,7 @@ export class ShopDO extends DurableObject<Env> {
     const name = String(b.name ?? "").trim().slice(0, 30);
     if (!name) throw new HttpError(400, "店舗名を入力してください");
     const color = /^#[0-9a-fA-F]{6}$/.test(String(b.color)) ? String(b.color) : "#1565c0";
-    const prefix = String(b.prefix ?? "").trim().slice(0, 3) || "A";
+    const prefix = String(b.prefix ?? "").trim().slice(0, 3); // 空なら番号だけ（札に文字が書いてあるときだけ使う）
     const count = Math.floor(Number(b.ticketCount ?? 30));
     this.set("shopId", id);
     this.set("name", name);
