@@ -1,6 +1,6 @@
 // アプリの画面一式を端末に保存し、電波がなくても開けるようにする。
 // API（/api/）は保存しない。
-const CACHE = "mogiten-v2";
+const CACHE = "mogiten-v3";
 
 async function precache() {
   const cache = await caches.open(CACHE);

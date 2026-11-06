@@ -6,6 +6,9 @@ import "./styles.css";
 
 captureInstallPrompt();
 
+// 書体（IBM Plex Sans JP）。定義が大きいので最初の表示を待たせないよう後から読み込む。届くまでは端末の標準の書体で出る
+void import("./fonts");
+
 // ホーム画面のアイコンから開いたときは、前回の担当の画面へそのまま進む（トップは左上の戻るで出せる）
 const params = new URLSearchParams(location.search);
 const last = load<{ shopId: string; screen: string } | null>("lastScreen", null);

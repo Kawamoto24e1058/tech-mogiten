@@ -117,8 +117,8 @@ export function Display({ shopId }: { shopId: string }) {
             <section className="dsp__card dsp__menu">
               <h2 className="dsp__card-title">メニュー <span lang="en">Menu</span></h2>
               <ul>
-                {menu.map((m) => (
-                  <li key={m.name} className={m.soldOut ? "is-soldout" : ""}>
+                {menu.map((m, i) => (
+                  <li key={`${i}:${m.name}`} className={m.soldOut ? "is-soldout" : ""}>
                     <span className="dsp__menu-name">{m.name}</span>
                     {m.soldOut ? <span className="dsp__soldout">売り切れ</span> : <b className="dsp__menu-price">{yen(m.price)}</b>}
                   </li>
