@@ -10,7 +10,7 @@ import { MasterAdmin } from "./pages/MasterAdmin";
 import { Register } from "./pages/Register";
 import { ShopAdmin } from "./pages/ShopAdmin";
 import { Setup } from "./pages/Setup";
-import { rememberShop } from "./myshops";
+import { forgetShop, rememberShop } from "./myshops";
 import { adminKey, api, ApiError, codeKey, load, save } from "./util";
 
 /**
@@ -24,7 +24,15 @@ function useShopInfo(shopId: string) {
   useEffect(() => {
     api<ShopPublic>(`/api/shops/${encodeURIComponent(shopId)}/public`, null)
       .then((s) => { save(cacheKey, s); setInfo(s); })
-      .catch((e) => { if (e instanceof ApiError && e.status === 404) setMissing(true); });
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 404) {
+          // 削除された店舗は、この端末の一覧と「前回の続き」からも外す
+          forgetShop(shopId);
+          if (load<{ shopId: string } | null>(LAST_SCREEN_KEY, null)?.shopId === shopId) localStorage.removeItem(LAST_SCREEN_KEY);
+          localStorage.removeItem(cacheKey);
+          setMissing(true);
+        }
+      });
   }, [shopId, cacheKey]);
   return { info, missing };
 }

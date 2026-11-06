@@ -2,8 +2,8 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { accentStyle } from "../components/ui";
 import { IconNext } from "../components/icons";
 import { canPromptInstall, isIOS, isStandalone, onInstallChange, promptInstall } from "../install";
-import { forgetShop, migrateOldShops, myShops, type MyShop } from "../myshops";
-import { adminKey, codeKey, load } from "../util";
+import { forgetShop, myShops, type MyShop } from "../myshops";
+import { adminKey, api, ApiError, codeKey, load } from "../util";
 
 const SCREEN_NAME: Record<string, string> = { register: "レジ", kitchen: "厨房", display: "呼び出し表示", admin: "管理" };
 
@@ -13,12 +13,23 @@ const SCREEN_NAME: Record<string, string> = { register: "レジ", kitchen: "厨�
  * 「どのお店の、どの担当か」を選ぶ。新しい店舗もここからつくる
  */
 export function Home() {
-  const [mine, setMine] = useState(() => { migrateOldShops(); return myShops(); });
+  const [mine, setMine] = useState(myShops);
   const last = load<{ shopId: string; screen: string } | null>("lastScreen", null);
   const joined = new URLSearchParams(location.search).get("joined");
   useEffect(() => {
     if (joined) history.replaceState(null, "", "/");
   }, [joined]);
+  // 削除された店舗は一覧から外す（電波がないときは何もしない）
+  useEffect(() => {
+    for (const m of myShops()) {
+      api(`/api/shops/${encodeURIComponent(m.id)}/public`, null).catch((e) => {
+        if (e instanceof ApiError && e.status === 404) {
+          forgetShop(m.id);
+          setMine(myShops());
+        }
+      });
+    }
+  }, []);
 
   const entries: MyShop[] = mine;
   // まだ店舗がない端末には、最初の案内（スタート画面）を出す

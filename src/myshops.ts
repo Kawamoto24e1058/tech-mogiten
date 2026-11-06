@@ -26,17 +26,6 @@ export function rememberShop(s: Pick<ShopPublic, "id" | "name" | "color" | "pref
   save(KEY, [{ id: s.id, name: s.name, color: s.color, prefix: s.prefix, organization: s.organization ?? null, open: !s.authRequired }, ...list]);
 }
 
-/**
- * 以前の版はトップに決まった店舗を全員に出していた。その端末（使ったことがある端末）だけ、
- * 1回だけ「この端末の店舗」に移す。新しい端末にはほかの店舗を出さない
- */
-export function migrateOldShops() {
-  if (localStorage.getItem("myShopsMigrated")) return;
-  localStorage.setItem("myShopsMigrated", "1");
-  const old = load<ShopPublic[]>("shops", []);
-  const mine = myShops();
-  for (const s of old.slice().reverse()) if (!mine.some((m) => m.id === s.id)) rememberShop(s);
-}
 
 export function forgetShop(id: string) {
   save(KEY, myShops().filter((x) => x.id !== id));
