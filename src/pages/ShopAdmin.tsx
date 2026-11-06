@@ -139,7 +139,7 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
                 <h2 className="day-heading">{label(day)} の売上</h2>
                 <Kpis s={sum} />
                 <SubStats s={sum} />
-                <ItemRanking s={sum} />
+                <ItemRanking s={sum} colors={new Map(st.menu.map((m, i) => [m.id, menuColor(m, i).solid]))} />
                 <SlotBars s={sum} />
                 <Btn onClick={() => void downloadCsv()}>この日のCSVを書き出す</Btn>
                 <a className="btn" href={`/${shopId}/report?day=${day}`}>この日の日報を開く（印刷・PDF）</a>

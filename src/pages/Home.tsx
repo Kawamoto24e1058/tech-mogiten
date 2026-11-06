@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { accentStyle } from "../components/ui";
-import { IconNext } from "../components/icons";
+import { IconDisplay, IconNext, IconOffline, IconTicket } from "../components/icons";
+import { Logo } from "../components/Logo";
 import { canPromptInstall, isIOS, isStandalone, onInstallChange, promptInstall } from "../install";
 import { forgetShop, myShops, type MyShop } from "../myshops";
 import { adminKey, api, ApiError, codeKey, load } from "../util";
@@ -41,7 +42,7 @@ export function Home() {
     <div className="page home-page">
       <main className="home">
         <header className="home__head">
-          <span className="brand-mark" aria-hidden>¥</span>
+          <Logo size={44} />
           <div>
             <h1 className="home__title">模擬店レジ</h1>
             <p className="home__lead">自分のお店の、担当の画面を押してください。</p>
@@ -145,10 +146,12 @@ function Start() {
     <div className="page home-page">
       <main className="start">
         <header className="start__hero">
-          <span className="brand-mark brand-mark--lg" aria-hidden>¥</span>
+          <Logo size={72} />
           <h1 className="start__title">模擬店レジ</h1>
           <p className="start__lead">文化祭・学園祭の模擬店のための、かんたん会計アプリ。<br />スマホだけで、レジ・厨房・呼び出し表示がつながります。</p>
         </header>
+
+        <FlowPreview />
 
         <section className="start__choices" aria-label="はじめかた">
           <a className="start-card start-card--primary" href="/new">
@@ -165,9 +168,9 @@ function Start() {
         </section>
 
         <section className="start__features" aria-label="特長">
-          <div><b>インストール不要</b><span>URLを開くだけ。ホーム画面に追加すればアプリのように使えます</span></div>
-          <div><b>電波が切れても会計できる</b><span>つながったら自動で送ります</span></div>
-          <div><b>お店ごとに分かれたデータ</b><span>売上やメニューは、ほかのお店からは見えません</span></div>
+          <div><IconDisplay size={22} /><b>インストール不要</b><span>URLを開くだけ。ホーム画面に追加すればアプリのように使えます</span></div>
+          <div><IconOffline size={22} /><b>電波が切れても会計できる</b><span>つながったら自動で送ります</span></div>
+          <div><IconTicket size={22} /><b>お店ごとに分かれたデータ</b><span>売上やメニューは、ほかのお店からは見えません</span></div>
         </section>
 
         <section className="start__steps" aria-label="使い方">
@@ -207,5 +210,39 @@ function JoinByLink({ compact }: { compact?: boolean }) {
       </div>
       {error && <p className="error">{error}</p>}
     </form>
+  );
+}
+
+/** スタート画面の図: 札を渡す → 会計 → 呼び出し の流れを、実際の画面に似せた小さな見本で見せる（飾り） */
+function FlowPreview() {
+  return (
+    <figure className="flow" aria-label="使い方の流れ: 札を渡す、会計する、番号で呼び出す">
+      <div className="flow__step">
+        <div className="flow__card flow__card--ticket" aria-hidden>
+          <span className="flow__label">札</span>
+          <span className="flow__ticket">A-5</span>
+        </div>
+        <figcaption><b>1</b>札を渡す</figcaption>
+      </div>
+      <span className="flow__arrow" aria-hidden>→</span>
+      <div className="flow__step">
+        <div className="flow__card" aria-hidden>
+          <div className="flow__items">
+            <span><i style={{ background: "#e5484d" }} />焼きそば</span><b>×2</b>
+            <span><i style={{ background: "#0090ff" }} />ラムネ</span><b>×1</b>
+          </div>
+          <div className="flow__total"><span>合計</span><b>750<small>円</small></b></div>
+        </div>
+        <figcaption><b>2</b>会計する</figcaption>
+      </div>
+      <span className="flow__arrow" aria-hidden>→</span>
+      <div className="flow__step">
+        <div className="flow__card flow__card--call" aria-hidden>
+          <span className="flow__label">お呼び出し</span>
+          <span className="flow__call">A-5</span>
+        </div>
+        <figcaption><b>3</b>番号で呼ぶ</figcaption>
+      </div>
+    </figure>
   );
 }
