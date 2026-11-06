@@ -3,7 +3,8 @@ import type { ShopPublic } from "../../shared/types";
 import type { ConnStatus } from "../sync";
 import { api, ApiError, buzz } from "../util";
 import { keyFromText } from "../myshops";
-import { IconAlert, IconBack, IconCheck, IconClose, IconInfo, IconOffline } from "./icons";
+import { Logo } from "./Logo";
+import { IconAlert, IconCheck, IconClose, IconInfo, IconOffline } from "./icons";
 
 type ShopLook = Pick<ShopPublic, "name" | "color" | "prefix">;
 
@@ -58,18 +59,40 @@ export function ShopBadge({ shop, size = "md" }: { shop: ShopLook | null; size?:
   );
 }
 
-/** 店舗の色のヘッダー。別の店舗の画面を操作する事故を防ぐため、店舗名を常に表示する。 */
+/** 区切りの斜線（ロゴ / 店舗 / 画面） */
+function Slash() {
+  return (
+    <svg className="appbar__slash" width="16" height="28" viewBox="0 0 16 28" aria-hidden>
+      <path d="M11 4 5 24" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/**
+ * ヘッダー。「ロゴ / 店舗 / 画面」のように並べ、いまどの店舗のどの画面かを常に示す（別の店舗を操作する事故を防ぐ）。
+ * ロゴを押すとトップに戻る
+ */
 export function AppBar({ shop, title, right, back }: { shop: ShopLook | null; title: string; right?: ReactNode; back?: string }) {
   return (
     <header className="appbar">
-      <div className="appbar__left">
-        {back && <a className="appbar__back" href={back} aria-label="トップに戻る"><IconBack size={22} /></a>}
-        <ShopBadge shop={shop} />
-        <div className="appbar__titles">
+      <nav className="appbar__left" aria-label="現在の場所">
+        {back ? (
+          <a className="appbar__home" href={back} aria-label="トップに戻る"><Logo size={26} /></a>
+        ) : (
+          <span className="appbar__home"><Logo size={26} /></span>
+        )}
+        <Slash />
+        <span className="appbar__crumb">
+          <ShopBadge shop={shop} />
           <span className="appbar__shop">{shop?.name ?? "読み込み中"}</span>
-          {title && <span className="appbar__title">{title}</span>}
-        </div>
-      </div>
+        </span>
+        {title && (
+          <>
+            <span className="appbar__sep"><Slash /></span>
+            <span className="appbar__title" aria-current="page">{title}</span>
+          </>
+        )}
+      </nav>
       <div className="appbar__right">{right}</div>
     </header>
   );

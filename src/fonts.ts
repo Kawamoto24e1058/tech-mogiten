@@ -1,5 +1,6 @@
-// IBM Plex Sans JP / IBM Plex Mono（SIL Open Font License 1.1）。同じサーバーから配るので外部への通信はない
-// 太さは 400 と 700 だけ読み込む（500 は 400、600 以上は 700 で表示される）
+// 書体（どれも SIL Open Font License 1.1）。同じサーバーから配るので外部への通信はない
+//   英数字: Geist（数字・金額・英字のラベル）  日本語: IBM Plex Sans JP（太さは 400 と 700）  等幅: Geist Mono
+import "@fontsource-variable/geist";
 import "@fontsource/ibm-plex-sans-jp/400.css";
 import "@fontsource/ibm-plex-sans-jp/700.css";
-import "@fontsource/ibm-plex-mono/latin-600.css";
+import "@fontsource/geist-mono/latin-500.css";
