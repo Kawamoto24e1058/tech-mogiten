@@ -1305,3 +1305,96 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 @media (max-width: 959px) { .preview__note { display: none; } }
 .tabbar { top: 56px; }
 .segmented { top: 66px; }
+
+/* =====================================================================
+ * 見た目の案（比べる用。:root[data-look] で切り替え）
+ * ===================================================================== */
+
+/* ---------- 案1: チケット＆レシート ---------- */
+:root[data-look="ticket"] { --bg: #f6f5f1; }
+[data-look="ticket"] .page, [data-look="ticket"] .home-page { background: var(--bg); }
+[data-look="ticket"] .appbar { border-bottom: 0; box-shadow: 0 1px 0 #e7e5df; }
+[data-look="ticket"] .appbar::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 8px; pointer-events: none;
+  background: radial-gradient(circle 4px at 50% 50%, var(--bg) 96%, transparent) 0 0 / 14px 8px repeat-x;
+}
+[data-look="ticket"] .shop-badge, [data-look="ticket"] .btn--big {
+  -webkit-mask: radial-gradient(circle 5px at 0 50%, transparent 96%, #000) left / 51% 100% no-repeat, radial-gradient(circle 5px at 100% 50%, transparent 96%, #000) right / 51% 100% no-repeat;
+          mask: radial-gradient(circle 5px at 0 50%, transparent 96%, #000) left / 51% 100% no-repeat, radial-gradient(circle 5px at 100% 50%, transparent 96%, #000) right / 51% 100% no-repeat;
+}
+[data-look="ticket"] .shop-badge { width: 34px; border-radius: 5px; }
+[data-look="ticket"] .btn--big {
+  -webkit-mask: radial-gradient(circle 12px at 0 50%, transparent 96%, #000) left / 51% 100% no-repeat, radial-gradient(circle 12px at 100% 50%, transparent 96%, #000) right / 51% 100% no-repeat;
+          mask: radial-gradient(circle 12px at 0 50%, transparent 96%, #000) left / 51% 100% no-repeat, radial-gradient(circle 12px at 100% 50%, transparent 96%, #000) right / 51% 100% no-repeat;
+  border-radius: 10px;
+}
+[data-look="ticket"] .appbar__title { padding: 2px 10px; border: 1.5px dashed #a1a1aa; border-radius: 6px; font-family: var(--mono), var(--font); font-size: 0.8rem; color: #3f3f46; }
+[data-look="ticket"] .appbar__title::before { display: none; }
+[data-look="ticket"] .panel { border-color: #e7e5df; box-shadow: 0 1px 0 #e7e5df, 0 12px 24px -18px rgba(60, 50, 30, 0.25); }
+[data-look="ticket"] .setup-panel { position: relative; padding-top: 22px;
+  -webkit-mask: radial-gradient(circle 12px at 0 58px, transparent 96%, #000) left / 51% 100% no-repeat, radial-gradient(circle 12px at 100% 58px, transparent 96%, #000) right / 51% 100% no-repeat;
+          mask: radial-gradient(circle 12px at 0 58px, transparent 96%, #000) left / 51% 100% no-repeat, radial-gradient(circle 12px at 100% 58px, transparent 96%, #000) right / 51% 100% no-repeat;
+}
+[data-look="ticket"] .setup-panel::after { content: ""; position: absolute; top: 57px; left: 20px; right: 20px; border-top: 2px dashed #d6d3cb; }
+[data-look="ticket"] .setup-panel .eyebrow { margin-bottom: 0; }
+[data-look="ticket"] .setup-panel__title { margin-top: 20px; }
+[data-look="ticket"] .setup-panel > .eyebrow { display: flex; justify-content: space-between; height: 22px; }
+[data-look="ticket"] .form-rows { border-top-style: dashed; border-color: #d6d3cb; }
+[data-look="ticket"] .form-row { border-bottom-style: dashed; border-color: #d6d3cb; }
+[data-look="ticket"] .setup-steps__no { padding: 1px 8px; border: 1.5px solid currentColor; border-radius: 4px; }
+[data-look="ticket"] .preview { border: 0; padding-bottom: 28px; box-shadow: 0 12px 24px -18px rgba(60, 50, 30, 0.25); }
+[data-look="ticket"] .preview::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 10px;
+  background: linear-gradient(135deg, var(--bg) 5px, transparent 0) 0 0 / 10px 10px repeat-x, linear-gradient(-135deg, var(--bg) 5px, transparent 0) 0 0 / 10px 10px repeat-x;
+  transform: scaleY(-1);
+}
+
+/* ---------- 案2: ひとさじのポップ ---------- */
+:root[data-look="pop"] { --bg: #fbfaf6; --ink: #18181b; }
+[data-look="pop"] .page, [data-look="pop"] .home-page { background: var(--bg); }
+[data-look="pop"] .appbar { border-bottom: 2px solid var(--ink); }
+[data-look="pop"] .shop-badge { border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); border-radius: 8px; }
+[data-look="pop"] .appbar__shop { font-size: 1.1rem; }
+[data-look="pop"] .appbar__title::before { display: none; }
+[data-look="pop"] .appbar__title { padding: 1px 10px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 0.78rem; font-weight: 700; }
+[data-look="pop"] .appbar__btn, [data-look="pop"] .btn { border: 2px solid var(--ink); }
+[data-look="pop"] .panel, [data-look="pop"] .preview, [data-look="pop"] .kpi { border: 2px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); }
+[data-look="pop"] .input { border: 2px solid var(--ink); }
+[data-look="pop"] .btn--big { box-shadow: 3px 3px 0 var(--ink); }
+[data-look="pop"] .btn--big:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: none; }
+[data-look="pop"] .btn:disabled { border-color: #a1a1aa; box-shadow: none; }
+[data-look="pop"] .setup-panel__title { width: fit-content; padding: 0 2px; background: linear-gradient(transparent 62%, color-mix(in srgb, var(--accent) 28%, transparent) 62%); }
+[data-look="pop"] .setup-steps__bar { height: 4px; }
+[data-look="pop"] .setup-steps li.is-on .setup-steps__no { color: var(--ink); }
+[data-look="pop"] .color-chip { border-radius: 10px; border: 2px solid var(--ink); }
+[data-look="pop"] .preview__bar, [data-look="pop"] .preview__call { border: 2px solid var(--ink); }
+[data-look="pop"] .form-row, [data-look="pop"] .form-rows { border-color: #d4d4d8; }
+
+/* ---------- 案3: 屋台の看板（のれん） ---------- */
+:root[data-look="yatai"] { --bg: #f5f3ee; }
+[data-look="yatai"] .page, [data-look="yatai"] .home-page { background: var(--bg); }
+[data-look="yatai"] .appbar { background: var(--accent); color: var(--on-accent); border-bottom: 0; }
+[data-look="yatai"] .appbar::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 14px; pointer-events: none;
+  background: repeating-linear-gradient(90deg, var(--accent) 0 116px, transparent 116px 120px);
+}
+[data-look="yatai"] .appbar__back, [data-look="yatai"] .appbar__title, [data-look="yatai"] .conn { color: var(--on-accent); }
+[data-look="yatai"] .appbar__back:hover { background: rgba(0, 0, 0, 0.12); color: var(--on-accent); }
+[data-look="yatai"] .appbar__title::before { background: color-mix(in srgb, var(--on-accent) 50%, transparent); }
+[data-look="yatai"] .appbar .shop-badge { background: var(--on-accent); color: var(--accent); border-radius: 50%; }
+[data-look="yatai"] .appbar__shop { font-size: 1.15rem; letter-spacing: 0.06em; }
+[data-look="yatai"] .appbar__btn { background: transparent; color: var(--on-accent); border-color: color-mix(in srgb, var(--on-accent) 70%, transparent); }
+[data-look="yatai"] .appbar { margin-bottom: 14px; }
+[data-look="yatai"] .panel { position: relative; overflow: hidden; border-color: #e3dfd5; }
+[data-look="yatai"] .setup-panel::before, [data-look="yatai"] .preview::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px;
+  background: conic-gradient(#27272a 25%, transparent 0 50%, #27272a 0 75%, transparent 0) 0 0 / 12px 12px;
+}
+[data-look="yatai"] .preview { overflow: hidden; }
+[data-look="yatai"] .setup-panel__title { font-size: 1.6rem; letter-spacing: 0.04em; }
+[data-look="yatai"] .setup-steps__bar { height: 6px; border-radius: 0; }
+[data-look="yatai"] .form-rows, [data-look="yatai"] .form-row { border-color: #e3dfd5; }
+
+/* プレビューの中の飾りを位置決めするため（広い画面では横に貼りつく） */
+.preview { position: relative; }
+@media (min-width: 960px) { .preview { position: sticky; } }
