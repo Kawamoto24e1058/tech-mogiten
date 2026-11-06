@@ -7,4 +7,6 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 export default defineConfig({
   plugins: [react(), cloudflare()],
   server: { host: true },
+  // 書体ファイルは data: に埋め込まない（CSP の font-src は self だけ許可している）
+  build: { assetsInlineLimit: (file) => (/\.woff2?$/.test(file) ? false : undefined) },
 });
