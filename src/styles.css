@@ -1378,3 +1378,94 @@ a.appbar__home:hover { background: #f2f2f3; }
 .tabbar button:hover { color: var(--text); }
 .tabbar button.is-on { color: var(--text); font-weight: 700; border-bottom-color: var(--text); }
 .kpi--main { border-top: 1px solid var(--line); box-shadow: inset 0 3px 0 var(--accent), var(--shadow-1); }
+
+/* =====================================================================
+ * 構造を見せるレイアウト（.page--grid）
+ *   カードを浮かせず、白い面を 1px の線で区切る。見出しは大きく左上に。
+ *   広い画面の管理は、左にサイドバー（ロゴ・店舗・メニュー・ほかの画面）
+ * ===================================================================== */
+.page--grid { background: #fff; }
+.side { display: none; }
+.page--grid .admin { max-width: 1120px; gap: 0; padding: 0 16px 48px; }
+
+/* ページの見出し */
+.admin-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; padding: 24px 0 20px; border-bottom: 1px solid var(--line); }
+.admin-head__title { margin-right: auto; font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.admin-head__actions { display: flex; gap: 8px; }
+.admin-head .day-select { font-size: 0.85rem; color: var(--muted); font-weight: 500; }
+.admin-head .btn, .admin-head .input { min-height: 44px; }
+
+/* 面: カードをやめて、上の線で区切る */
+.page--grid .admin > .panel {
+  border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; padding: 24px 0;
+}
+.page--grid .admin > .admin-head + .panel, .page--grid .admin > .kpis + .substats + .panel { border-top: 0; }
+.page--grid .admin > .banner, .page--grid .admin > .toast { margin-top: 16px; }
+
+/* 数字の帯: 線で区切ったマスに、大きな数字 */
+.page--grid .kpis { gap: 0; margin-top: 0; border-bottom: 1px solid var(--line); }
+.page--grid .kpi { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 20px 20px 22px 0; gap: 6px; }
+.page--grid .kpi + .kpi { border-left: 1px solid var(--line); padding-left: 20px; }
+.page--grid .kpi > span:first-child { font-size: 0.8rem; font-weight: 500; }
+.page--grid .kpi--main > span:first-child::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 2px; background: var(--accent); vertical-align: 1px; }
+.page--grid .kpi .money { font-size: clamp(1.6rem, 3vw, 2.2rem); }
+.page--grid .kpi--main .money { font-size: clamp(2.6rem, 6vw, 4rem); line-height: 1; letter-spacing: -0.03em; }
+@media (max-width: 640px) {
+  .page--grid .kpi--main { border-bottom: 1px solid var(--line); }
+  .page--grid .kpi + .kpi { border-left: 0; padding-left: 0; }
+  .page--grid .kpi:nth-child(3) { border-left: 1px solid var(--line); padding-left: 16px; }
+}
+.page--grid .substats { margin: 12px 0 16px; }
+
+@media (min-width: 960px) {
+  .page--sided > .appbar, .page--sided > .tabbar { display: none; }
+  .frame { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100dvh; }
+  .page--grid .admin { margin: 0; padding: 8px 48px 64px; }
+
+  /* 見出しを左の列、中身を右の列に（新聞のような2段組み） */
+  .page--grid .admin > .panel { display: block; position: relative; padding-left: 200px; }
+  .page--grid .admin > .panel > .panel__title { position: absolute; left: 0; top: 26px; width: 176px; font-size: 0.9rem; }
+  .page--grid .admin > .panel > * + * { margin-top: 12px; }
+  .page--grid .admin > .panel > .panel__title + * { margin-top: 0; }
+
+  /* サイドバー */
+  .side {
+    position: sticky; top: 0; height: 100dvh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+    padding: 14px 12px; background: #fafafa; border-right: 1px solid var(--line);
+  }
+  .side__brand { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 8px; border-radius: 8px; font-weight: 700; font-size: 0.9rem; text-decoration: none; }
+  .side__brand:hover { background: #f0f0f1; }
+  .side__shop { display: flex; align-items: center; gap: 10px; margin: 10px 0 14px; padding: 10px; border-radius: 10px; background: #fff; border: 1px solid var(--line); }
+  .side__shop .shop-badge { width: 28px; height: 28px; border-radius: 7px; }
+  .side__shop-text { display: grid; min-width: 0; line-height: 1.3; }
+  .side__shop-text b { font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .side__shop-text small { color: var(--muted); font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .side__nav { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .side__nav button, .side__nav a {
+    display: flex; align-items: center; width: 100%; min-height: 40px; padding: 0 10px; border: 0; border-radius: 8px;
+    background: none; color: #3f3f46; font-size: 0.92rem; font-weight: 500; text-align: left; text-decoration: none;
+  }
+  .side__nav button:hover, .side__nav a:hover { background: #f0f0f1; color: var(--text); }
+  .side__nav button.is-on { background: #ececee; color: var(--text); font-weight: 700; }
+  .side__group { margin: 18px 10px 6px; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.04em; color: #6b6b72; }
+  .side__refresh { margin-top: auto; min-height: 40px; border-radius: 8px; border: 1px solid var(--edge); background: #fff; font-weight: 600; font-size: 0.88rem; }
+  .side__refresh:hover { background: #f6f6f7; }
+}
+
+/* 店舗をつくる: 左に入力、右に線で区切ったプレビュー面（カードに入れない） */
+.page--create .setup--create { max-width: none; padding: 0; gap: 0; }
+.page--create .setup-steps { padding: 16px; border-bottom: 1px solid var(--line); }
+.page--create .create { gap: 0; }
+.page--create .setup-panel { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 24px 16px 40px; }
+.page--create .setup-panel__title { font-size: clamp(1.8rem, 4vw, 2.6rem); letter-spacing: -0.03em; line-height: 1.15; }
+.page--create .preview { border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: #f6f6f7; padding: 24px 16px 32px; }
+@media (min-width: 960px) {
+  .page--create .setup-steps { padding: 20px 48px; }
+  .page--create .create { grid-template-columns: minmax(0, 1fr) minmax(360px, 42%); min-height: calc(100dvh - 56px - 77px); }
+  .page--create .setup-panel { padding: 40px 48px 56px; max-width: 760px; }
+  .page--create .preview { position: relative; top: 0; border-top: 0; border-left: 1px solid var(--line); padding: 40px 48px; align-content: start; }
+  .page--create .preview > * { max-width: 380px; }
+}
+.page--grid .meter { height: 4px; }
+@media (min-width: 960px) { .page--create .create { align-items: stretch; } }
+.page--create .preview__call { background: #fff; border: 1px solid var(--line); }

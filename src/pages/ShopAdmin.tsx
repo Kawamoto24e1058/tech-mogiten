@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { DaySummary, DiscountRule, Expense, MenuItem, Order, ShopExport, ShopPublic } from "../../shared/types";
 import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "../../shared/types";
 import { dayLabel, menuColor, ticketLabel, yen } from "../../shared/logic";
-import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
+import { AppBar, Banner, Btn, Modal, Page, ShopBadge } from "../components/ui";
+import { Logo } from "../components/Logo";
 import { ItemRanking, Kpis, SlotBars, SubStats } from "../components/Summary";
 import { adminKey, api, ApiError, codeKey, timeOf, todayJst } from "../util";
 import { LinkRow, RecoveryCodeBox } from "../components/ShareLinks";
@@ -111,22 +112,52 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
   const label = (d: string) => `${dayLabel(d, shop?.festivalStart)}${d === todayJst() ? "・今日" : ""}`;
 
   return (
-    <Page shop={shop} className="page--work">
+    <Page shop={shop} className="page--work page--grid page--sided">
       <AppBar shop={shop} title="管理" back="/" right={<button className="appbar__btn" onClick={() => void refresh()}>更新</button>} />
       <nav className="tabbar" aria-label="管理メニュー">
         {TABS.map(([k, label]) => (
           <button key={k} className={tab === k ? "is-on" : ""} aria-pressed={tab === k} onClick={() => setTab(k)}>{label}</button>
         ))}
       </nav>
+      <div className="frame">
+      <aside className="side" aria-label="管理メニュー（広い画面）">
+        <a className="side__brand" href="/" aria-label="トップに戻る"><Logo size={24} /><span>模擬店レジ</span></a>
+        <div className="side__shop">
+          <ShopBadge shop={shop} />
+          <span className="side__shop-text"><b>{shop?.name ?? "読み込み中"}</b>{shop?.organization && <small>{shop.organization}</small>}</span>
+        </div>
+        <ul className="side__nav">
+          {TABS.map(([k, label]) => (
+            <li key={k}><button className={tab === k ? "is-on" : ""} aria-pressed={tab === k} onClick={() => setTab(k)}>{label}</button></li>
+          ))}
+        </ul>
+        <p className="side__group">ほかの画面</p>
+        <ul className="side__nav side__nav--links">
+          <li><a href={`/${shopId}/register`}>レジ</a></li>
+          <li><a href={`/${shopId}/kitchen`}>厨房</a></li>
+          <li><a href={`/${shopId}/display`} target="_blank" rel="noreferrer">呼び出し表示 ↗</a></li>
+          <li><a href={`/${shopId}/setup?step=1`}>はじめの設定</a></li>
+        </ul>
+        <button className="side__refresh" onClick={() => void refresh()}>最新にする</button>
+      </aside>
       <main className="admin">
-        {(tab === "sales" || tab === "orders" || tab === "closing") && (
-          <label className="day-select">
-            <span>日付</span>
-            <select className="input" value={day} onChange={(e) => setDay(e.target.value)}>
-              {days.map((d) => <option key={d} value={d}>{label(d)}</option>)}
-            </select>
-          </label>
-        )}
+        <header className="admin-head">
+          <h1 className="admin-head__title">{TABS.find(([k]) => k === tab)?.[1] ?? ""}</h1>
+          {(tab === "sales" || tab === "orders" || tab === "closing") && (
+            <label className="day-select">
+              <span>日付</span>
+              <select className="input" value={day} onChange={(e) => setDay(e.target.value)}>
+                {days.map((d) => <option key={d} value={d}>{label(d)}</option>)}
+              </select>
+            </label>
+          )}
+          {tab === "sales" && st && (
+            <div className="admin-head__actions">
+              <Btn onClick={() => void downloadCsv()}>CSV</Btn>
+              <a className="btn" href={`/${shopId}/report?day=${day}`}>日報（印刷・PDF）</a>
+            </div>
+          )}
+        </header>
         {error && <Banner kind="error">{error}</Banner>}
         {st && st.menu.length === 0 && (
           <Banner kind="info" action={<a className="link banner__action" href={`/${shopId}/setup?step=1`}>続ける</a>}>まだ商品がありません。「はじめの設定」で、商品・割引・番号札・共有を順番に設定できます。</Banner>
@@ -136,13 +167,10 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
           <>
             {tab === "sales" && (
               <>
-                <h2 className="day-heading">{label(day)} の売上</h2>
                 <Kpis s={sum} />
                 <SubStats s={sum} />
                 <ItemRanking s={sum} colors={new Map(st.menu.map((m, i) => [m.id, menuColor(m, i).solid]))} />
                 <SlotBars s={sum} />
-                <Btn onClick={() => void downloadCsv()}>この日のCSVを書き出す</Btn>
-                <a className="btn" href={`/${shopId}/report?day=${day}`}>この日の日報を開く（印刷・PDF）</a>
                 <DayTotals st={st} day={day} label={label} onPick={setDay} />
                 <ProfitPanel st={st} mutate={mutate} />
               </>
@@ -154,6 +182,7 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
           </>
         )}
       </main>
+      </div>
     </Page>
   );
 }

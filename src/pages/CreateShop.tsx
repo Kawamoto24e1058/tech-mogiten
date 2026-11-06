@@ -49,7 +49,7 @@ export function CreateShop() {
   };
 
   return (
-    <Page shop={look} className="page--work">
+    <Page shop={look} className="page--work page--grid page--create">
       <AppBar shop={look} title="店舗をつくる" back="/" />
       <main className="admin setup setup--create">
         <SetupSteps step={0} />
