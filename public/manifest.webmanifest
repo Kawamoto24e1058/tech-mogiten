@@ -10,15 +10,29 @@
   "background_color": "#fafafa",
   "theme_color": "#ffffff",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
-  ],
-  "shortcuts": [
-    { "name": "焼き鳥のレジ", "short_name": "焼き鳥 レジ", "url": "/a/register" },
-    { "name": "焼き鳥の厨房", "short_name": "焼き鳥 厨房", "url": "/a/kitchen" },
-    { "name": "とうもろこしのレジ", "short_name": "とうもろこし レジ", "url": "/b/register" },
-    { "name": "とうもろこしの厨房", "short_name": "とうもろこし 厨房", "url": "/b/kitchen" }
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }

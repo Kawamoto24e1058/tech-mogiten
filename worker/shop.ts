@@ -56,6 +56,12 @@ function parseStock(v: unknown): number | null {
   return n;
 }
 
+/** 推測できないキー（URL に入れられる文字だけ） */
+function randomKey(bytes: number): string {
+  const b = crypto.getRandomValues(new Uint8Array(bytes));
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -106,6 +112,9 @@ export class ShopDO extends DurableObject<Env> {
     // 削除した注文はすぐには消さず、deleted_at をつけてゴミ箱に入れる（戻せるように）
     const orderCols = this.sql.exec<{ name: string }>("PRAGMA table_info(orders)").toArray().map((r) => r.name);
     if (!orderCols.includes("deleted_at")) this.sql.exec("ALTER TABLE orders ADD COLUMN deleted_at INTEGER");
+    // 間違いの回数は接続元ごとに数える（第三者が店舗全体を締め出せないように）
+    const failCols = this.sql.exec<{ name: string }>("PRAGMA table_info(auth_fail)").toArray().map((r) => r.name);
+    if (!failCols.includes("ip")) this.sql.exec("ALTER TABLE auth_fail ADD COLUMN ip TEXT");
   }
 
   // ---------- 設定 ----------
@@ -128,8 +137,52 @@ export class ShopDO extends DurableObject<Env> {
     }
   }
 
+  /** テック部の最初の2店舗（wrangler.jsonc の SHOPS）。リンクなしでも開ける昔からの店舗 */
+  private isLegacy(id: string) {
+    return (this.env.SHOPS ?? "").split(",").map((x) => x.trim()).includes(id);
+  }
+
+  /** 各部が作った店舗の初期設定。管理用・部員用のキー（リンク）を作って返す。キーは推測できない長さにする */
+  private async initShop(id: string, b: { name?: string; organization?: string; color?: string; prefix?: string; ticketCount?: number }) {
+    if (this.get("shopId")) throw new HttpError(409, "この店舗はすでにあります");
+    const name = String(b.name ?? "").trim().slice(0, 30);
+    if (!name) throw new HttpError(400, "店舗名を入力してください");
+    const color = /^#[0-9a-fA-F]{6}$/.test(String(b.color)) ? String(b.color) : "#1565c0";
+    const prefix = String(b.prefix ?? "").trim().slice(0, 3) || "A";
+    const count = Math.floor(Number(b.ticketCount ?? 30));
+    this.set("shopId", id);
+    this.set("name", name);
+    this.set("organization", String(b.organization ?? "").trim().slice(0, 40) || null);
+    this.set("color", color);
+    this.set("prefix", prefix);
+    this.set("ticketCount", String(count >= 1 && count <= 999 ? count : 30));
+    this.set("protected", "1");
+    this.set("createdAt", String(Date.now()));
+    const keys = await this.issueKeys(["admin", "staff"]);
+    this.audit("create.shop", null, { name });
+    return keys;
+  }
+
+  /** キーを作り直す。古いキー（リンク）は使えなくなる */
+  private async issueKeys(which: ("admin" | "staff")[]) {
+    const out: { adminKey?: string; staffKey?: string } = {};
+    const sid = this.get("shopId");
+    for (const w of which) {
+      const key = randomKey(w === "admin" ? 24 : 16);
+      this.set(w === "admin" ? "adminHash" : "staffHash", await sha256(`${sid}:${key}`));
+      if (w === "staff") {
+        // 部員用リンクは管理画面で何度でも表示できるように保存しておく（管理用リンクは保存しない）
+        this.set("staffKey", key);
+        out.staffKey = key;
+      } else out.adminKey = key;
+    }
+    return out;
+  }
+
   private async ensureShopId(id: string) {
     if (!this.get("shopId")) {
+      // 昔からの店舗（SHOPS）だけは最初のアクセスで作る。それ以外は「店舗をつくる」からしか作れない
+      if (!this.isLegacy(id) && !DEFAULT_SHOPS[id]) throw new HttpError(404, "店舗が見つかりません。リンクが正しいか確認してください");
       const d = DEFAULT_SHOPS[id] ?? { name: `${id.toUpperCase()}店`, color: "#334155", prefix: id.toUpperCase() };
       this.set("shopId", id);
       this.set("name", d.name);
@@ -158,6 +211,7 @@ export class ShopDO extends DurableObject<Env> {
       prefix: this.get("prefix") ?? "",
       ticketCount: Number(this.get("ticketCount") ?? 30),
       festivalStart: this.get("festivalStart"),
+      organization: this.get("organization"),
       configured: this.get("staffHash") != null,
       authRequired: this.authRequired,
     };
@@ -167,15 +221,17 @@ export class ShopDO extends DurableObject<Env> {
 
   private async roleFor(code: string | null): Promise<Role | null> {
     if (!code) return null;
-    if (this.env.MASTER_PIN && timingSafeEqual(code, this.env.MASTER_PIN)) return "master";
+    // テック部の全体PINは昔からの店舗だけで使える
+    if (this.env.MASTER_PIN && this.isLegacy(this.get("shopId") ?? "") && timingSafeEqual(code, this.env.MASTER_PIN)) return "master";
     const h = await sha256(`${this.get("shopId")}:${code}`);
     if (this.get("adminHash") === h) return "admin";
     if (this.get("staffHash") === h) return "staff";
     return null;
   }
 
+  /** リンク（キー）で保護している店舗か。各部が作った店舗は必ず保護する */
   private get authRequired() {
-    return this.env.REQUIRE_AUTH === "1";
+    return this.env.REQUIRE_AUTH === "1" || this.get("protected") === "1";
   }
 
   private async authorize(req: Request, min: Role, code?: string | null): Promise<Role> {
@@ -183,16 +239,17 @@ export class ShopDO extends DurableObject<Env> {
     // 合言葉・PIN を使わない設定（既定）では、誰でもすべての操作ができる
     if (!this.authRequired) return "master";
     const now = Date.now();
+    const ip = req.headers.get("cf-connecting-ip") ?? "local";
     this.sql.exec("DELETE FROM auth_fail WHERE at < ?", now - AUTH_FAIL_WINDOW_MS);
-    const fails = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM auth_fail").one().n;
-    if (fails >= AUTH_FAIL_LIMIT) throw new HttpError(429, "間違いが続いたため、1分ほど待ってからもう一度入力してください");
+    const fails = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM auth_fail WHERE ip = ?", ip).one().n;
+    if (fails >= AUTH_FAIL_LIMIT) throw new HttpError(429, "間違いが続いたため、1分ほど待ってからもう一度ためしてください");
     const given = code ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
     const role = await this.roleFor(given);
     if (!role) {
-      if (given) this.sql.exec("INSERT INTO auth_fail (at) VALUES (?)", now);
-      throw new HttpError(401, "合言葉が違います");
+      if (given) this.sql.exec("INSERT INTO auth_fail (at, ip) VALUES (?, ?)", now, ip);
+      throw new HttpError(401, given ? "リンクが正しくないか、作り直されて使えなくなっています" : "この店舗の部員用リンクから開いてください");
     }
-    if (ROLE_RANK[role] < ROLE_RANK[min]) throw new HttpError(403, "この操作には管理PINが必要です");
+    if (ROLE_RANK[role] < ROLE_RANK[min]) throw new HttpError(403, "この操作には管理用リンクが必要です");
     return role;
   }
 
@@ -489,6 +546,7 @@ export class ShopDO extends DurableObject<Env> {
       .map((r) => ({ at: r.at as number, action: r.action as string, orderId: r.order_id as string | null, detail: JSON.parse(r.detail as string) }));
     return {
       shop,
+      staffKey: this.authRequired ? this.get("staffKey") : null,
       hasAdminPin: this.get("adminHash") != null,
       menu: this.menu(),
       discounts: this.discounts(),
@@ -532,6 +590,10 @@ export class ShopDO extends DurableObject<Env> {
     const url = new URL(req.url);
     const shopId = req.headers.get("x-shop-id");
     if (!shopId) throw new HttpError(400, "店舗IDがありません");
+    // 店舗をつくる（Worker からだけ呼ばれる。外からの /init は Worker が止める）
+    if (url.pathname.endsWith("/init") && req.method === "POST" && req.headers.get("x-internal") === "1") {
+      return json(await this.initShop(shopId, await this.body(req)));
+    }
     await this.ensureShopId(shopId);
     const path = url.pathname.replace(/^\/api\/shops\/[^/]+/, "") || "/";
     const m = req.method;
@@ -578,6 +640,22 @@ export class ShopDO extends DurableObject<Env> {
     let seg: RegExpMatchArray | null;
 
     if (p === "/state" && m === "GET") return json(this.adminState(day));
+    // 共有リンクのキーを作り直す / 昔からの店舗をリンクで保護する
+    if (p === "/keys" && m === "POST") {
+      const { rotate } = await this.body<{ rotate: "staff" | "admin" | "protect" }>(req);
+      let keys: { adminKey?: string; staffKey?: string };
+      if (rotate === "protect") {
+        if (this.get("protected") === "1") throw new HttpError(409, "すでにリンクで保護されています");
+        keys = await this.issueKeys(["admin", "staff"]);
+        this.set("protected", "1");
+      } else if (rotate === "staff" || rotate === "admin") {
+        if (!this.authRequired) throw new HttpError(400, "先にリンクで保護してください");
+        keys = await this.issueKeys([rotate]);
+      } else throw new HttpError(400, "操作が不正です");
+      this.audit("keys", null, { rotate });
+      this.broadcast();
+      return json(keys);
+    }
     if (p === "/csv" && m === "GET") {
       return new Response(ordersCsv(this.ordersOfDay(day), this.shopPublic().prefix), {
         headers: {

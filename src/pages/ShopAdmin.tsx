@@ -4,10 +4,14 @@ import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "../../shared/types"
 import { dayLabel, menuColor, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
 import { ItemRanking, Kpis, SlotBars, SubStats } from "../components/Summary";
-import { api, ApiError, timeOf, todayJst } from "../util";
+import { adminKey, api, ApiError, codeKey, timeOf, todayJst } from "../util";
+import { LinkRow } from "../components/ShareLinks";
+import { displayLink, joinLink } from "../myshops";
 
 interface AdminState {
   shop: ShopPublic;
+  /** 部員用リンクのキー（リンクで保護している店舗だけ） */
+  staffKey: string | null;
   hasAdminPin: boolean;
   menu: MenuItem[];
   discounts: DiscountRule[];
@@ -27,7 +31,7 @@ const STATUS_JA: Record<string, string> = { cooking: "調理中", ready: "でき
 const ACTION_JA: Record<string, string> = {
   cancel: "キャンセル", "ticket.change": "札の変更", "ticket.release": "札を空きに戻す", "menu.add": "メニュー追加",
   "menu.edit": "メニュー変更", "menu.delete": "メニュー削除", settings: "店舗設定の変更", codes: "合言葉・PINの変更",
-  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", "ticket.reuse": "レジで使用中の札を使い直し", reset: "練習データの消去", discounts: "まとめ買い割引の変更", delete: "注文を削除（ゴミ箱へ）", restore: "削除した注文を戻す", "delete.day": "その日の注文をまとめて削除",
+  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", "ticket.reuse": "レジで使用中の札を使い直し", reset: "練習データの消去", discounts: "まとめ買い割引の変更", keys: "共有リンクの作り直し", "create.shop": "店舗の作成", delete: "注文を削除（ゴミ箱へ）", restore: "削除した注文を戻す", "delete.day": "その日の注文をまとめて削除",
 };
 
 type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;
@@ -646,8 +650,6 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const [prefix, setPrefix] = useState(st.shop.prefix);
   const [count, setCount] = useState(String(st.shop.ticketCount));
   const [start, setStart] = useState(st.shop.festivalStart ?? "");
-  const [staffCode, setStaffCode] = useState("");
-  const [adminPin, setAdminPin] = useState("");
   return (
     <>
       <form className="panel" onSubmit={(e) => { e.preventDefault(); void mutate("/settings", "PUT", { name, color, prefix, ticketCount: Number(count), festivalStart: start || null }, "保存しました"); }}>
@@ -664,27 +666,83 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         </label>
         <Btn type="submit" variant="accent">保存</Btn>
       </form>
-      {st.shop.authRequired && (
-      <form className="panel" onSubmit={async (e) => {
-        e.preventDefault();
-        const body: Record<string, string> = {};
-        if (staffCode) body.staffCode = staffCode;
-        if (adminPin) body.adminPin = adminPin;
-        if (await mutate("/codes", "PUT", body, "変更しました。ほかの端末では入力し直しが必要です")) { setStaffCode(""); setAdminPin(""); }
-      }}>
-        <h3 className="panel__title">合言葉・PIN</h3>
-        {!st.shop.configured && <Banner kind="warn">合言葉が未設定です。設定するまでレジと厨房は使えません。</Banner>}
-        <label className="field">レジ・厨房の合言葉<small className="muted">部員に共有します（4文字以上）{st.shop.configured ? "・設定済み" : ""}</small>
-          <input className="input" value={staffCode} onChange={(e) => setStaffCode(e.target.value)} autoComplete="off" placeholder="変更するときだけ入力" />
-        </label>
-        <label className="field">管理PIN<small className="muted">管理する人だけが知るもの（4文字以上）{st.hasAdminPin ? "・設定済み" : ""}</small>
-          <input className="input" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} autoComplete="off" placeholder="変更するときだけ入力" />
-        </label>
-        <Btn type="submit" variant="accent" disabled={!staffCode && !adminPin}>変更する</Btn>
-      </form>
-      )}
+      <SharePanel st={st} mutate={mutate} />
       <PrepPanel st={st} mutate={mutate} />
     </>
+  );
+}
+
+/**
+ * 共有リンク。部員用リンクで部員の端末を、管理用リンクで代表者の端末を使えるようにする。
+ * なくした・広まってしまったときは作り直す（古いリンクは使えなくなる）
+ */
+function SharePanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+  const id = st.shop.id;
+  const [confirm, setConfirm] = useState<"staff" | "admin" | "protect" | null>(null);
+  const [error, setError] = useState("");
+  const myAdminKey = localStorage.getItem(adminKey(id));
+  const run = async (rotate: "staff" | "admin" | "protect") => {
+    setError("");
+    try {
+      const keys = await api<{ adminKey?: string; staffKey?: string }>(`/api/shops/${encodeURIComponent(id)}/admin/keys`, myAdminKey ?? "", { method: "POST", body: JSON.stringify({ rotate }) });
+      if (keys.adminKey) localStorage.setItem(adminKey(id), keys.adminKey);
+      if (keys.staffKey) localStorage.setItem(codeKey(id), keys.staffKey);
+      setConfirm(null);
+      await mutate("/state", "GET", undefined, rotate === "protect" ? "リンクで保護しました" : "リンクを作り直しました");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "できませんでした");
+    }
+  };
+
+  if (!st.shop.authRequired) {
+    return (
+      <section className="panel">
+        <h3 className="panel__title">共有リンクで保護する</h3>
+        <p className="hint">今はリンクを知っていれば誰でもレジ・管理を開けます。保護すると、部員用リンク・管理用リンクを開いた端末だけが使えるようになります。</p>
+        {error && <Banner kind="error">{error}</Banner>}
+        {confirm === "protect" ? (
+          <div className="row">
+            <Btn variant="accent" onClick={() => void run("protect")}>保護してリンクを作る</Btn>
+            <Btn variant="ghost" onClick={() => setConfirm(null)}>やめる</Btn>
+          </div>
+        ) : <Btn onClick={() => setConfirm("protect")}>保護する</Btn>}
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel">
+      <h3 className="panel__title">共有リンク</h3>
+      {st.staffKey && <LinkRow title="部員用リンク" note="レジ・厨房で使う部員に送ります" url={joinLink(id, st.staffKey)} />}
+      {myAdminKey && (
+        <LinkRow title="管理用リンク（代表者だけ）" note="メニュー・売上・設定を変えられます" url={joinLink(id, myAdminKey)} warn="部員全体には配らないでください。なくすと、ほかの端末から管理できなくなります。" />
+      )}
+      <LinkRow title="呼び出し表示" note="店先のモニターで開きます（誰でも見られます）" url={displayLink(id)} />
+      {error && <Banner kind="error">{error}</Banner>}
+      <div className="prep-row">
+        <div>
+          <b>部員用リンクを作り直す</b>
+          <p className="hint">リンクが部外に広まったときに使います。今の部員用リンクは使えなくなり、部員は新しいリンクを開き直す必要があります。</p>
+        </div>
+        <Btn variant="danger" onClick={() => setConfirm("staff")}>作り直す</Btn>
+      </div>
+      <div className="prep-row">
+        <div>
+          <b>管理用リンクを作り直す</b>
+          <p className="hint">今の管理用リンクは使えなくなります。この端末には新しいリンクが自動で入ります。</p>
+        </div>
+        <Btn variant="danger" onClick={() => setConfirm("admin")}>作り直す</Btn>
+      </div>
+      {(confirm === "staff" || confirm === "admin") && (
+        <Modal title={`${confirm === "staff" ? "部員用" : "管理用"}リンクを作り直しますか？`} onClose={() => setConfirm(null)}>
+          <Banner kind="warn">今の{confirm === "staff" ? "部員用" : "管理用"}リンクは、すぐに使えなくなります。{confirm === "staff" ? "営業中なら、レジ・厨房の端末がすべて止まります。" : ""}</Banner>
+          <div className="modal__actions">
+            <Btn variant="ghost" onClick={() => setConfirm(null)}>やめる</Btn>
+            <Btn variant="danger" onClick={() => void run(confirm)}>作り直す</Btn>
+          </div>
+        </Modal>
+      )}
+    </section>
   );
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import type { ShopPublic } from "../../shared/types";
 import type { ConnStatus } from "../sync";
 import { api, ApiError, buzz } from "../util";
+import { keyFromText } from "../myshops";
 import { IconAlert, IconBack, IconCheck, IconClose, IconInfo, IconOffline } from "./icons";
 
 type ShopLook = Pick<ShopPublic, "name" | "color" | "prefix">;
@@ -201,13 +202,14 @@ export function CodeGate({
     setBusy(true);
     setError("");
     try {
-      const { role } = await api<{ role: string }>(`/api/shops/${encodeURIComponent(shopId)}/auth`, null, { method: "POST", body: JSON.stringify({ code }) });
+      const key = keyFromText(code);
+      const { role } = await api<{ role: string }>(`/api/shops/${encodeURIComponent(shopId)}/auth`, null, { method: "POST", body: JSON.stringify({ code: key }) });
       const rank = { staff: 1, admin: 2, master: 3 } as Record<string, number>;
       if (rank[role] < rank[minRole]) {
-        setError(minRole === "admin" ? "これはレジ・厨房用の合言葉です。管理PINを入力してください" : "権限が足りません");
+        setError(minRole === "admin" ? "これは部員用リンクです。管理用リンクを使ってください" : "権限が足りません");
       } else {
-        localStorage.setItem(storageKey, code);
-        onOk(code);
+        localStorage.setItem(storageKey, key);
+        onOk(key);
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "エラーが起きました");
@@ -228,10 +230,10 @@ export function CodeGate({
         <div className="gate__shop">{look?.name}</div>
         <h1 className="gate__title">{title}</h1>
         <label htmlFor="code" className="gate__label">{label}</label>
-        <input id="code" className="input input--big" type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
+        <input id="code" className="input" type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
         {error && <p className="error" role="alert">{error}</p>}
         <Btn type="submit" variant="accent" big disabled={!code || busy}>{busy ? "確認中…" : "はじめる"}</Btn>
-        <p className="hint">この端末では、次から入力不要です。</p>
+        <p className="hint">一度開けば、この端末では次から不要です。リンクは店舗の代表者からもらってください。</p>
         {import.meta.env.DEV && devHint && <p className="dev-hint">開発用: {devHint}</p>}
         <a className="gate__home" href="/">トップに戻る</a>
       </form>

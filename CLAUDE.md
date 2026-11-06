@@ -1,6 +1,6 @@
 # 模擬店 会計システム
 
-文化祭の模擬店（2店舗）向けのレジ・厨房・呼び出し・管理の画面。要件は `docs/requirements.md`、起動方法は `README.md`。
+文化祭の模擬店向けのレジ・厨房・呼び出し・管理の画面。各部・団体が自分の店舗をつくり、共有リンク（推測できないキー）で守る。店舗ごとに Durable Object を分け、店舗の一覧は公開しない。要件は `docs/requirements.md`、起動方法は `README.md`。
 
 - `npm run dev` で画面と API（Worker + Durable Object）が http://localhost:5173 で動く
 - 変更したら `npm run typecheck` と `npm test`、API を触ったら `npm run smoke`（dev 起動中・注文なしの状態で）

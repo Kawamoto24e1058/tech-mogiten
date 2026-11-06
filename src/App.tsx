@@ -1,30 +1,31 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ShopPublic } from "../shared/types";
 import { CodeGate } from "./components/ui";
+import { CreateShop } from "./pages/CreateShop";
 import { Display } from "./pages/Display";
 import { Home } from "./pages/Home";
+import { Join } from "./pages/Join";
 import { Kitchen } from "./pages/Kitchen";
 import { MasterAdmin } from "./pages/MasterAdmin";
 import { Register } from "./pages/Register";
 import { ShopAdmin } from "./pages/ShopAdmin";
-import { adminKey, api, codeKey, load, MASTER_KEY, save } from "./util";
+import { rememberShop } from "./myshops";
+import { adminKey, api, ApiError, codeKey, load, MASTER_KEY, save } from "./util";
 
 /**
- * 合言葉・PIN を使う設定か。サーバーの設定（REQUIRE_AUTH）に従う。
- * 端末に覚えている値ですぐ表示し、裏でサーバーに確かめる。分からないとき（初回かつ電波なし）は使わない扱い。
+ * 店舗の情報（名前・色・リンクで保護しているか）。端末に覚えている値ですぐ表示し、裏でサーバーに確かめる。
+ * 店舗ごとに「保護しているか」が違う（各部が作った店舗はリンクで保護、テック部の昔からの店舗は誰でも開ける）
  */
-function useAuthRequired(): boolean | null {
-  const cached = load<ShopPublic[]>("shops", []);
-  const [required, setRequired] = useState<boolean | null>(cached.length ? cached.some((s) => s.authRequired) : null);
+function useShopInfo(shopId: string) {
+  const cacheKey = `shop:${shopId}`;
+  const [info, setInfo] = useState<ShopPublic | null>(() => load<ShopPublic | null>(cacheKey, null));
+  const [missing, setMissing] = useState(false);
   useEffect(() => {
-    api<ShopPublic[]>("/api/shops", null)
-      .then((shops) => {
-        save("shops", shops);
-        setRequired(shops.some((s) => s.authRequired));
-      })
-      .catch(() => setRequired((r) => r ?? false));
-  }, []);
-  return required;
+    api<ShopPublic>(`/api/shops/${encodeURIComponent(shopId)}/public`, null)
+      .then((s) => { save(cacheKey, s); setInfo(s); })
+      .catch((e) => { if (e instanceof ApiError && e.status === 404) setMissing(true); });
+  }, [shopId, cacheKey]);
+  return { info, missing };
 }
 
 /** 最後に開いた画面。トップの「続きから」に出す */
@@ -39,89 +40,88 @@ function useStoredCode(key: string) {
   return [code, setCode, clear] as const;
 }
 
-function cachedShop(shopId: string): ShopPublic | null {
-  return load<ShopPublic[]>("shops", []).find((s) => s.id === shopId) ?? load<{ shop: ShopPublic } | null>(`snap:${shopId}`, null)?.shop ?? null;
-}
-
 function Loading() {
   return <div className="page"><main className="empty-state"><p>読み込んでいます…</p></main></div>;
 }
 
-function StaffScreen({ shopId, screen, auth }: { shopId: string; screen: "register" | "kitchen"; auth: boolean }) {
-  const [stored, setCode, clear] = useStoredCode(codeKey(shopId));
-  const code = auth ? stored : "";
+function NotFound() {
+  return (
+    <div className="page page--center">
+      <main className="gate">
+        <h1 className="gate__title">店舗が見つかりません</h1>
+        <p className="hint">リンクが正しいか確かめてください。店舗の代表者に、もう一度リンクを送ってもらうと確実です。</p>
+        <a className="btn" href="/">トップに戻る</a>
+      </main>
+    </div>
+  );
+}
+
+function StaffScreen({ shop, screen }: { shop: ShopPublic; screen: "register" | "kitchen" }) {
+  const [stored, setCode, clear] = useStoredCode(codeKey(shop.id));
+  // 管理用リンクを開いた端末は、レジ・厨房もそのまま使える
+  const code = shop.authRequired ? stored ?? localStorage.getItem(adminKey(shop.id)) : "";
   if (code == null) {
     return (
       <CodeGate
-        shopId={shopId}
-        shop={cachedShop(shopId)}
+        shopId={shop.id}
+        shop={shop}
         title={screen === "register" ? "レジ" : "厨房"}
-        label="お店の合言葉"
+        label="部員用リンクを貼り付け（または、そのリンクをこの端末で開く）"
         minRole="staff"
-        storageKey={codeKey(shopId)}
+        storageKey={codeKey(shop.id)}
         onOk={setCode}
-        devHint="合言葉は 1111"
+        devHint="デモの店舗は 1111"
       />
     );
   }
-  return screen === "register" ? <Register shopId={shopId} code={code} onAuthError={clear} /> : <Kitchen shopId={shopId} code={code} onAuthError={clear} />;
+  return screen === "register" ? <Register shopId={shop.id} code={code} onAuthError={clear} /> : <Kitchen shopId={shop.id} code={code} onAuthError={clear} />;
 }
 
-function AdminScreen({ shopId, auth }: { shopId: string; auth: boolean }) {
-  const [code, setCode, clear] = useStoredCode(adminKey(shopId));
+function AdminScreen({ shop }: { shop: ShopPublic }) {
+  const [code, setCode, clear] = useStoredCode(adminKey(shop.id));
   const master = localStorage.getItem(MASTER_KEY);
-  const effective = auth ? code ?? master : "";
+  const effective = shop.authRequired ? code ?? master : "";
   if (effective == null) {
     return (
       <CodeGate
-        shopId={shopId}
-        shop={cachedShop(shopId)}
+        shopId={shop.id}
+        shop={shop}
         title="管理"
-        label="管理PIN（またはテック部の全体PIN）"
+        label="管理用リンクを貼り付け（または、そのリンクをこの端末で開く）"
         minRole="admin"
-        storageKey={adminKey(shopId)}
+        storageKey={adminKey(shop.id)}
         onOk={setCode}
-        devHint="管理PINは 9999、全体PINは 0000"
+        devHint="デモの店舗は 9999"
       />
     );
   }
-  return <ShopAdmin shopId={shopId} code={effective} onAuthError={() => { clear(); if (!code) localStorage.removeItem(MASTER_KEY); location.reload(); }} />;
+  return <ShopAdmin shopId={shop.id} code={effective} onAuthError={() => { clear(); if (!code) localStorage.removeItem(MASTER_KEY); location.reload(); }} />;
 }
 
-function MasterScreen({ auth }: { auth: boolean }) {
-  const [stored, setCode, clear] = useStoredCode(MASTER_KEY);
-  const code = auth ? stored : "";
-  const shops = load<ShopPublic[]>("shops", []);
-  if (code == null) {
-    return (
-      <CodeGate
-        shopId={shops[0]?.id ?? "a"}
-        shop={{ name: "テック部", color: "#374151", prefix: "T" }}
-        title="全体の売上"
-        label="テック部の全体PIN"
-        devHint="全体PINは 0000"
-        minRole="master"
-        storageKey={MASTER_KEY}
-        onOk={setCode}
-      />
-    );
-  }
-  return <MasterAdmin code={code} onAuthError={clear} />;
+function ShopRoute({ shopId, screen }: { shopId: string; screen: string }) {
+  const { info, missing } = useShopInfo(shopId);
+  useEffect(() => {
+    if (info && ["register", "kitchen", "admin"].includes(screen)) rememberShop(info);
+  }, [info, screen]);
+  if (missing) return <NotFound />;
+  if (!info) return <Loading />;
+  if (screen === "register" || screen === "kitchen") return <StaffScreen key={`${shopId}/${screen}`} shop={info} screen={screen} />;
+  if (screen === "admin") return <AdminScreen shop={info} />;
+  return <Home />;
 }
 
 export function App() {
   const parts = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  const auth = useAuthRequired();
   const [shopId, screen] = parts;
   useEffect(() => {
     if (shopId && ["register", "kitchen", "display", "admin"].includes(screen)) save(LAST_SCREEN_KEY, { shopId, screen });
   }, [shopId, screen]);
 
   if (parts.length === 0) return <Home />;
+  if (parts.length === 1 && parts[0] === "new") return <CreateShop />;
+  if (parts.length === 1 && parts[0] === "admin") return <MasterAdmin />;
   if (screen === "display") return <Display shopId={shopId} />;
-  if (auth == null) return <Loading />;
-  if (parts.length === 1 && parts[0] === "admin") return <MasterScreen auth={auth} />;
-  if (screen === "register" || screen === "kitchen") return <StaffScreen key={`${shopId}/${screen}`} shopId={shopId} screen={screen} auth={auth} />;
-  if (screen === "admin") return <AdminScreen shopId={shopId} auth={auth} />;
+  if (screen === "join") return <Join shopId={shopId} />;
+  if (screen) return <ShopRoute shopId={shopId} screen={screen} />;
   return <Home />;
 }

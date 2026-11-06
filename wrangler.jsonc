@@ -15,8 +15,14 @@
     "SHOPS": "a,b"
   },
   "durable_objects": {
-    "bindings": [{ "name": "SHOP", "class_name": "ShopDO" }]
+    "bindings": [
+      { "name": "SHOP", "class_name": "ShopDO" },
+      { "name": "REGISTRY", "class_name": "Registry" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ShopDO"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ShopDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["Registry"] }
+  ],
   "observability": { "enabled": true }
 }

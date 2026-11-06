@@ -221,6 +221,35 @@ check(st.menu.find((x) => x.id === limited.id).stock === 2, "練習で売れた�
 check(st.menu.length > 0 && (!AUTH || (await req(`${A}/auth`, { method: "POST", body: { code: "yakisoba" } })).data.role === "staff"), "メニュー（と合言葉）は残る");
 check((await req(`/api/master/summary`, { code: MASTER })).data[0].summary.sales === 0, "全体の売上からも消える");
 
+// ---- 各部が自分の店舗をつくる（店舗ごとに分かれ、リンクで守られる） ----
+const c1 = await req(`/api/shops`, { method: "POST", body: { name: "スモーク店", organization: "テスト部", color: "#15803d", prefix: "S", ticketCount: 20 } });
+check(c1.status === 201 && /^[2-9a-hjkmnp-z]{10}$/.test(c1.data.id) && c1.data.adminKey && c1.data.staffKey, "店舗をつくると、店舗IDと管理用・部員用のキーが返る");
+const S = `/api/shops/${c1.data.id}`;
+const pub = (await req(`${S}/public`)).data;
+check(pub.name === "スモーク店" && pub.organization === "テスト部" && pub.authRequired === true && pub.ticketCount === 20, "作った店舗はリンクで保護されている");
+check((await req(`${S}/admin/state`)).status === 401, "キーなしでは管理画面を使えない");
+check((await req(`${S}/admin/state`, { code: c1.data.staffKey })).status === 403, "部員用キーでは管理画面を使えない");
+const sst = await req(`${S}/admin/state`, { code: c1.data.adminKey });
+check(sst.status === 200 && sst.data.staffKey === c1.data.staffKey && sst.data.orders.length === 0 && sst.data.menu.length === 0, "管理用キーで管理画面を使え、ほかの店舗のデータは入っていない");
+check((await req(`${S}/auth`, { method: "POST", body: { code: c1.data.staffKey } })).data.role === "staff", "部員用キーでレジ・厨房を使える");
+check((await req(`${S}/history`)).status === 401, "キーなしでは履歴を見られない");
+const c2 = await req(`/api/shops`, { method: "POST", body: { name: "スモーク店2" } });
+check(c2.status === 201 && c2.data.id !== c1.data.id, "別の店舗をつくれる");
+check((await req(`/api/shops/${c2.data.id}/admin/state`, { code: c1.data.adminKey })).status === 401, "ほかの店舗のキーでは管理できない");
+check((await req(`${S}/init`, { method: "POST", body: { name: "のっとり" } })).status === 404, "外から店舗の初期化はできない");
+check((await req(`/api/shops/zzzzzzzzzz/public`)).status === 404, "作られていない店舗IDは見つからない");
+check((await req(`/api/shops`, { method: "POST", body: { name: "" } })).status === 400, "店舗名が空では作れない");
+const rot = await req(`${S}/admin/keys`, { code: c1.data.adminKey, method: "POST", body: { rotate: "staff" } });
+check(rot.status === 200 && rot.data.staffKey && rot.data.staffKey !== c1.data.staffKey, "部員用リンクを作り直せる");
+check((await req(`${S}/auth`, { method: "POST", body: { code: c1.data.staffKey } })).status === 401, "作り直す前の部員用リンクは使えない");
+check((await req(`${S}/auth`, { method: "POST", body: { code: rot.data.staffKey } })).data.role === "staff", "新しい部員用リンクは使える");
+const sdisp = socket(c1.data.id, "display");
+await sdisp.opened;
+check((await sdisp.until((m) => m.type === "display")).data.shop.name === "スモーク店", "呼び出し表示はキーなしで見られる");
+const sbad = socket(c1.data.id, "register");
+check(!(await sbad.opened.then(() => true, () => false)), "キーなしではレジにつながらない");
+sdisp.ws.close();
+
 [reg, kit, disp].forEach((s) => s.ws.close());
 console.log(failed ? `\n${failed}件 失敗` : "\nすべて成功");
 process.exit(failed ? 1 : 0);

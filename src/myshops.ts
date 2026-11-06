@@ -1,0 +1,56 @@
+import type { ShopPublic } from "../shared/types";
+import { adminKey, codeKey, load, save } from "./util";
+
+/**
+ * この端末で使っている店舗。全店舗の一覧はどこにも公開しないので、
+ * 「作った」「リンクを開いた」店舗だけをこの端末に覚えておく
+ */
+export interface MyShop {
+  id: string;
+  name: string;
+  color: string;
+  prefix: string;
+  organization?: string | null;
+  /** リンクなしで誰でも開ける店舗（テック部の昔からの店舗） */
+  open?: boolean;
+}
+
+const KEY = "myShops";
+
+export function myShops(): MyShop[] {
+  return load<MyShop[]>(KEY, []);
+}
+
+export function rememberShop(s: Pick<ShopPublic, "id" | "name" | "color" | "prefix" | "organization" | "authRequired">) {
+  const list = myShops().filter((x) => x.id !== s.id);
+  save(KEY, [{ id: s.id, name: s.name, color: s.color, prefix: s.prefix, organization: s.organization ?? null, open: !s.authRequired }, ...list]);
+}
+
+/**
+ * 以前の版はトップにテック部の店舗を全員に出していた。その端末（使ったことがある端末）だけ、
+ * 1回だけ「この端末の店舗」に移す。新しい端末にはほかの店舗を出さない
+ */
+export function migrateOldShops() {
+  if (localStorage.getItem("myShopsMigrated")) return;
+  localStorage.setItem("myShopsMigrated", "1");
+  const old = load<ShopPublic[]>("shops", []);
+  const mine = myShops();
+  for (const s of old.slice().reverse()) if (!mine.some((m) => m.id === s.id)) rememberShop(s);
+}
+
+export function forgetShop(id: string) {
+  save(KEY, myShops().filter((x) => x.id !== id));
+  localStorage.removeItem(codeKey(id));
+  localStorage.removeItem(adminKey(id));
+}
+
+/** 共有リンクに入っているキー（#k=...）を取り出す。キーだけを貼り付けたときはそのまま */
+export function keyFromText(text: string): string {
+  const t = text.trim();
+  const m = /[#&?]k=([A-Za-z0-9_-]+)/.exec(t);
+  return m ? m[1] : t;
+}
+
+/** 共有リンク。キーは # の後ろに入れる（サーバーのログに残らない） */
+export const joinLink = (id: string, key: string) => `${location.origin}/${id}/join#k=${key}`;
+export const displayLink = (id: string) => `${location.origin}/${id}/display`;

@@ -60,6 +60,8 @@ export interface ShopPublic {
   ticketCount: number;
   /** 文化祭の初日（YYYY-MM-DD）。日付を「1日目」などと表示する */
   festivalStart?: string | null;
+  /** 部・団体名（任意） */
+  organization?: string | null;
   configured: boolean;
   /** 合言葉・PIN を使うか（環境変数 REQUIRE_AUTH=1 のときだけ） */
   authRequired: boolean;
