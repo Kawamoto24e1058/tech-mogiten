@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { accentStyle } from "../components/ui";
-import { IconDisplay, IconNext, IconOffline, IconTicket } from "../components/icons";
+import { IconNext } from "../components/icons";
 import { Logo } from "../components/Logo";
 import { canPromptInstall, isIOS, isStandalone, onInstallChange, promptInstall } from "../install";
 import { forgetShop, myShops, type MyShop } from "../myshops";
@@ -140,50 +140,38 @@ function InstallCard() {
   );
 }
 
-/** はじめて開いた端末のスタート画面 */
+/** はじめて開いた端末のスタート画面。説明は最小限: 何のアプリか・流れの図・2つの入口だけ */
 function Start() {
+  const [joining, setJoining] = useState(false);
   return (
-    <div className="page home-page">
+    <div className="page start-page">
       <main className="start">
         <header className="start__hero">
-          <Logo size={72} />
+          <Logo size={64} />
           <h1 className="start__title">模擬店レジ</h1>
-          <p className="start__lead">文化祭・学園祭の模擬店のための、かんたん会計アプリ。<br />スマホだけで、レジ・厨房・呼び出し表示がつながります。</p>
+          <p className="start__lead">文化祭の模擬店のための、かんたん会計アプリ</p>
         </header>
 
         <FlowPreview />
 
-        <section className="start__choices" aria-label="はじめかた">
-          <a className="start-card start-card--primary" href="/new">
-            <span className="start-card__who">代表者の方</span>
-            <b className="start-card__title">店舗をつくる</b>
-            <span className="start-card__desc">店舗名を入れるだけで、数分で始められます。部員に配るリンクができます。</span>
+        <section className="start__actions" aria-label="はじめかた">
+          <a className="start-btn start-btn--primary" href="/new">
+            <b>店舗をつくる</b>
+            <span>代表者の方</span>
           </a>
-          <div className="start-card">
-            <span className="start-card__who">部員の方</span>
-            <b className="start-card__title">リンクを開く</b>
-            <span className="start-card__desc">代表者からLINEなどで届いた「部員用リンク」を、この端末で開いてください。貼り付けても開けます。</span>
+          <button className="start-btn" onClick={() => setJoining(!joining)} aria-expanded={joining}>
+            <b>リンクを開く</b>
+            <span>部員の方</span>
+          </button>
+        </section>
+        {joining && (
+          <div className="start__join">
+            <p className="hint">代表者から届いた「部員用リンク」をこの端末で開くか、ここに貼り付けてください。</p>
             <JoinByLink />
           </div>
-        </section>
+        )}
 
-        <section className="start__features" aria-label="特長">
-          <div><IconDisplay size={22} /><b>インストール不要</b><span>URLを開くだけ。ホーム画面に追加すればアプリのように使えます</span></div>
-          <div><IconOffline size={22} /><b>電波が切れても会計できる</b><span>つながったら自動で送ります</span></div>
-          <div><IconTicket size={22} /><b>お店ごとに分かれたデータ</b><span>売上やメニューは、ほかのお店からは見えません</span></div>
-        </section>
-
-        <section className="start__steps" aria-label="使い方">
-          <h2>使い方</h2>
-          <ol>
-            <li><b>店舗をつくる</b>（代表者）: 店舗名・色を決める</li>
-            <li><b>メニューを登録</b>: 商品と値段、まとめ買い割引など</li>
-            <li><b>部員用リンクを配る</b>: 部員は一度開くだけで、レジ・厨房が使えます</li>
-            <li><b>営業する</b>: 札を渡して会計 → 厨房で作る → 呼び出し表示で番号を出す</li>
-          </ol>
-        </section>
-
-        <p className="start__foot">お客さんの名前や連絡先などの個人情報は入力しないでください。<br /><a href="/terms">利用規約・プライバシーポリシー</a>　<a href="/recover">管理用リンクをなくした方</a></p>
+        <p className="start__foot"><a href="/terms">利用規約</a><span aria-hidden>・</span><a href="/recover">管理用リンクをなくした方</a></p>
       </main>
     </div>
   );

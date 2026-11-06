@@ -1180,3 +1180,41 @@ a.btn { text-decoration: none; }
 .meter { height: 8px; border-radius: 4px; }
 .meter span { border-radius: 4px; }
 .chart__axis span { text-align: center; }
+
+/* =====================================================================
+ * スタート画面（作業画面ではないので、背景に控えめな模様を使う）
+ *   ごく薄い灰色の地に細かい点、下に向かって消える。上にうっすら光
+ * ===================================================================== */
+.start-page { position: relative; background: #f4f4f3; overflow-x: hidden; }
+.start-page::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 720px; pointer-events: none;
+  background-image: radial-gradient(#d4d4d8 1px, transparent 1.2px);
+  background-size: 18px 18px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.6) 45%, transparent 100%);
+          mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.6) 45%, transparent 100%);
+}
+.start-page::after {
+  content: ""; position: absolute; left: 50%; top: -220px; width: 900px; height: 520px; transform: translateX(-50%); pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+}
+.start { position: relative; z-index: 1; max-width: 640px; gap: 28px; padding: 56px 16px 40px; min-height: 100dvh; align-content: center; }
+.start__title { font-size: clamp(2rem, 7vw, 2.6rem); }
+.start__lead { font-size: 1.05rem; color: #52525b; }
+.start__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.start-btn {
+  display: grid; justify-items: center; gap: 2px; min-height: 76px; padding: 14px; border-radius: 16px;
+  border: 1px solid #a1a1aa; background: #fff; color: var(--text); text-decoration: none; font: inherit; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.06);
+}
+.start-btn b { font-size: 1.15rem; }
+.start-btn span { font-size: 0.82rem; color: var(--muted); }
+.start-btn:hover { border-color: #18181b; }
+.start-btn--primary { background: #18181b; border-color: #18181b; color: #fff; box-shadow: 0 6px 18px rgba(24, 24, 27, 0.22); }
+.start-btn--primary span { color: #d4d4d8; }
+.start-btn--primary:hover { background: #27272a; }
+.start-btn[aria-expanded="true"] { border-color: #18181b; box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.1); }
+.start__join { display: grid; gap: 4px; margin-top: -12px; padding: 14px 16px; border-radius: 16px; background: #fff; border: 1px solid var(--line); }
+.start__join .hint { margin: 0; }
+.start__foot { display: flex; justify-content: center; gap: 8px; color: var(--muted); font-size: 0.85rem; }
+.start__foot a { color: inherit; }
+.flow__card { background: #fff; }
