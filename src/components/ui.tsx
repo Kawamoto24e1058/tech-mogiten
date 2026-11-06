@@ -177,7 +177,7 @@ export function Notices({ notices, onDismiss }: { notices: { id: string; text: s
 
 /** 合言葉・PIN の入力。正しければ端末に保存する。 */
 export function CodeGate({
-  shopId, shop, title, label, minRole, onOk, storageKey, devHint,
+  shopId, shop, title, label, minRole, onOk, storageKey, devHint, extra,
 }: {
   shopId: string;
   shop: ShopLook | null;
@@ -187,6 +187,7 @@ export function CodeGate({
   storageKey: string;
   onOk: (code: string) => void;
   devHint?: string;
+  extra?: ReactNode;
 }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -235,6 +236,7 @@ export function CodeGate({
         <Btn type="submit" variant="accent" big disabled={!code || busy}>{busy ? "確認中…" : "はじめる"}</Btn>
         <p className="hint">一度開けば、この端末では次から不要です。リンクは店舗の代表者からもらってください。</p>
         {import.meta.env.DEV && devHint && <p className="dev-hint">開発用: {devHint}</p>}
+        {extra}
         <a className="gate__home" href="/">トップに戻る</a>
       </form>
     </Page>

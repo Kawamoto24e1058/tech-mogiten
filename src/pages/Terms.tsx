@@ -1,4 +1,4 @@
-/** 利用規約・プライバシーポリシー。運営者・連絡先は決まったら書き入れる */
+/** 利用規約・プライバシーポリシー */
 export function Terms() {
   return (
     <div className="page home-page">
@@ -71,7 +71,8 @@ export function Terms() {
         <p>店舗の管理画面の「店舗を削除」で、店舗のデータをすべて削除できます。最後に使ってから180日たった店舗は自動で削除されます。</p>
 
         <h2>運営者・お問い合わせ</h2>
-        <p>準備中です。</p>
+        <p>運営者: 桃山学院大学 テック部<br />お問い合わせ: <a href="mailto:tech@andrew.ac.jp">tech@andrew.ac.jp</a></p>
+        <p className="terms__date">学生が運営しています。お返事に数日かかることがあります。</p>
       </main>
     </div>
   );

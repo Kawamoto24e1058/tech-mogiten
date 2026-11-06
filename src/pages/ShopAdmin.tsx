@@ -5,7 +5,7 @@ import { dayLabel, menuColor, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
 import { ItemRanking, Kpis, SlotBars, SubStats } from "../components/Summary";
 import { adminKey, api, ApiError, codeKey, timeOf, todayJst } from "../util";
-import { LinkRow } from "../components/ShareLinks";
+import { LinkRow, RecoveryCodeBox } from "../components/ShareLinks";
 import { displayLink, forgetShop, joinLink } from "../myshops";
 
 interface AdminState {
@@ -694,15 +694,17 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
  */
 function SharePanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const id = st.shop.id;
-  const [confirm, setConfirm] = useState<"staff" | "admin" | "protect" | null>(null);
+  const [confirm, setConfirm] = useState<"staff" | "admin" | "recovery" | "protect" | null>(null);
   const [error, setError] = useState("");
+  const [newRecovery, setNewRecovery] = useState<string | null>(null);
   const myAdminKey = localStorage.getItem(adminKey(id));
-  const run = async (rotate: "staff" | "admin" | "protect") => {
+  const run = async (rotate: "staff" | "admin" | "recovery" | "protect") => {
     setError("");
     try {
-      const keys = await api<{ adminKey?: string; staffKey?: string }>(`/api/shops/${encodeURIComponent(id)}/admin/keys`, myAdminKey ?? "", { method: "POST", body: JSON.stringify({ rotate }) });
+      const keys = await api<{ adminKey?: string; staffKey?: string; recoveryCode?: string }>(`/api/shops/${encodeURIComponent(id)}/admin/keys`, myAdminKey ?? "", { method: "POST", body: JSON.stringify({ rotate }) });
       if (keys.adminKey) localStorage.setItem(adminKey(id), keys.adminKey);
       if (keys.staffKey) localStorage.setItem(codeKey(id), keys.staffKey);
+      if (keys.recoveryCode) setNewRecovery(keys.recoveryCode);
       setConfirm(null);
       await mutate("/state", "GET", undefined, rotate === "protect" ? "リンクで保護しました" : "リンクを作り直しました");
     } catch (e) {
@@ -749,6 +751,19 @@ function SharePanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         </div>
         <Btn variant="danger" onClick={() => setConfirm("admin")}>作り直す</Btn>
       </div>
+      <div className="prep-row">
+        <div>
+          <b>復旧コードを作り直す</b>
+          <p className="hint">管理用リンクをなくしたときに使うコードです。なくした・忘れたときに作り直します（前のコードは使えなくなります）。</p>
+        </div>
+        <Btn onClick={() => void run("recovery")}>作り直す</Btn>
+      </div>
+      {newRecovery && (
+        <Modal title="新しい復旧コード" onClose={() => setNewRecovery(null)}>
+          <RecoveryCodeBox code={newRecovery} shopName={st.shop.name} />
+          <div className="modal__actions"><Btn variant="accent" onClick={() => setNewRecovery(null)}>保存した</Btn></div>
+        </Modal>
+      )}
       {(confirm === "staff" || confirm === "admin") && (
         <Modal title={`${confirm === "staff" ? "部員用" : "管理用"}リンクを作り直しますか？`} onClose={() => setConfirm(null)}>
           <Banner kind="warn">今の{confirm === "staff" ? "部員用" : "管理用"}リンクは、すぐに使えなくなります。{confirm === "staff" ? "営業中なら、レジ・厨房の端末がすべて止まります。" : ""}</Banner>

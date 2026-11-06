@@ -67,6 +67,14 @@ function parseCost(v: unknown): number | null {
   return n;
 }
 
+/** 復旧コード: 見間違えにくい文字だけで16文字（4文字ずつ区切る。約80ビット） */
+function recoveryCode(): string {
+  const chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  const s = [...b].map((x) => chars[x % chars.length]).join("");
+  return s.match(/.{4}/g)!.join("-");
+}
+
 /** 推測できないキー（URL に入れられる文字だけ） */
 function randomKey(bytes: number): string {
   const b = crypto.getRandomValues(new Uint8Array(bytes));
@@ -158,17 +166,24 @@ export class ShopDO extends DurableObject<Env> {
     this.set("ticketCount", String(count >= 1 && count <= 999 ? count : 30));
     this.set("protected", "1");
     this.set("createdAt", String(Date.now()));
-    const keys = await this.issueKeys(["admin", "staff"]);
+    const keys = await this.issueKeys(["admin", "staff", "recovery"]);
     this.audit("create.shop", null, { name });
     await this.touch();
     return keys;
   }
 
   /** キーを作り直す。古いキー（リンク）は使えなくなる */
-  private async issueKeys(which: ("admin" | "staff")[]) {
-    const out: { adminKey?: string; staffKey?: string } = {};
+  private async issueKeys(which: ("admin" | "staff" | "recovery")[]) {
+    const out: { adminKey?: string; staffKey?: string; recoveryCode?: string } = {};
     const sid = this.get("shopId");
     for (const w of which) {
+      if (w === "recovery") {
+        // 管理用リンクをなくしたときの復旧コード。見せるのは作ったときの1回だけ（ハッシュだけを保存）
+        const code = recoveryCode();
+        this.set("recoveryHash", await sha256(`${sid}:recovery:${code.replace(/-/g, "")}`));
+        out.recoveryCode = code;
+        continue;
+      }
       const key = randomKey(w === "admin" ? 24 : 16);
       this.set(w === "admin" ? "adminHash" : "staffHash", await sha256(`${sid}:${key}`));
       if (w === "staff") {
@@ -655,6 +670,26 @@ export class ShopDO extends DurableObject<Env> {
 
     if (path === "/ws") return this.handleWebSocket(req, url);
     if (path === "/public" && m === "GET") return json(this.shopPublic());
+    // 管理用リンクをなくしたとき: 復旧コードで新しい管理用リンクを出す。古い管理用リンクと使った復旧コードは使えなくする
+    if (path === "/recover" && m === "POST") {
+      const now = Date.now();
+      const ip = req.headers.get("cf-connecting-ip") ?? "local";
+      this.sql.exec("DELETE FROM auth_fail WHERE at < ?", now - AUTH_FAIL_WINDOW_MS);
+      const fails = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM auth_fail WHERE ip = ?", ip).one().n;
+      if (fails >= AUTH_FAIL_LIMIT) throw new HttpError(429, "間違いが続いたため、1分ほど待ってからもう一度ためしてください");
+      const stored = this.get("recoveryHash");
+      if (!stored) throw new HttpError(400, "この店舗には復旧コードがありません。管理用リンクを持っている人に頼んでください");
+      const { code } = await this.body<{ code: string }>(req);
+      const normalized = String(code ?? "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+      if ((await sha256(`${this.get("shopId")}:recovery:${normalized}`)) !== stored) {
+        this.sql.exec("INSERT INTO auth_fail (at, ip) VALUES (?, ?)", now, ip);
+        throw new HttpError(401, "復旧コードが違います");
+      }
+      const keys = await this.issueKeys(["admin", "recovery"]);
+      this.audit("recover", null, {});
+      await this.touch();
+      return json({ ...keys, shop: this.shopPublic() });
+    }
     if (path === "/auth" && m === "POST") {
       const { code } = await this.body<{ code: string }>(req);
       return json({ role: await this.authorize(req, "staff", String(code ?? "")) });
@@ -695,13 +730,13 @@ export class ShopDO extends DurableObject<Env> {
     if (p === "/state" && m === "GET") return json(this.adminState(day));
     // 共有リンクのキーを作り直す / 昔からの店舗をリンクで保護する
     if (p === "/keys" && m === "POST") {
-      const { rotate } = await this.body<{ rotate: "staff" | "admin" | "protect" }>(req);
-      let keys: { adminKey?: string; staffKey?: string };
+      const { rotate } = await this.body<{ rotate: "staff" | "admin" | "recovery" | "protect" }>(req);
+      let keys: { adminKey?: string; staffKey?: string; recoveryCode?: string };
       if (rotate === "protect") {
         if (this.get("protected") === "1") throw new HttpError(409, "すでにリンクで保護されています");
-        keys = await this.issueKeys(["admin", "staff"]);
+        keys = await this.issueKeys(["admin", "staff", "recovery"]);
         this.set("protected", "1");
-      } else if (rotate === "staff" || rotate === "admin") {
+      } else if (rotate === "staff" || rotate === "admin" || rotate === "recovery") {
         if (!this.authRequired) throw new HttpError(400, "先にリンクで保護してください");
         keys = await this.issueKeys([rotate]);
       } else throw new HttpError(400, "操作が不正です");

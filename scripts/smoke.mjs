@@ -275,6 +275,15 @@ check((await req(`/api/shops/${c2.data.id}/admin/shop/delete`, { code: c2.data.a
 check((await req(`/api/shops/${c2.data.id}/public`)).status === 404 && (await req(`/api/shops/${c2.data.id}/admin/state`, { code: c2.data.adminKey })).status === 404, "削除した店舗は見つからず、キーも使えない");
 check((await req(`${S}/public`)).status === 200, "ほかの店舗は消えない");
 
+// ---- 管理用リンクをなくしたとき（復旧コード） ----
+check(/^[2-9A-HJ-NP-Z]{4}(-[2-9A-HJ-NP-Z]{4}){3}$/.test(c1.data.recoveryCode ?? ""), "店舗をつくると復旧コードが返る");
+check((await req(`${S}/recover`, { method: "POST", body: { code: "AAAA-AAAA-AAAA-AAAA" } })).status === 401, "違う復旧コードでは再発行できない");
+const rec = await req(`${S}/recover`, { method: "POST", body: { code: c1.data.recoveryCode.toLowerCase().replace(/-/g, " ") } });
+check(rec.status === 200 && rec.data.adminKey && rec.data.adminKey !== c1.data.adminKey && rec.data.recoveryCode !== c1.data.recoveryCode && rec.data.shop.name === "スモーク店", "復旧コードで新しい管理用リンクが出る（大文字小文字・区切りは問わない）");
+check((await req(`${S}/admin/state`, { code: c1.data.adminKey })).status === 401, "なくした古い管理用リンクは使えなくなる");
+check((await req(`${S}/admin/state`, { code: rec.data.adminKey })).status === 200, "新しい管理用リンクで管理できる");
+check((await req(`${S}/recover`, { method: "POST", body: { code: c1.data.recoveryCode } })).status === 401, "使った復旧コードはもう使えない");
+
 [reg, kit, disp].forEach((s) => s.ws.close());
 console.log(failed ? `\n${failed}件 失敗` : "\nすべて成功");
 process.exit(failed ? 1 : 0);

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { DiscountRule, MenuItem, ShopPublic } from "../../shared/types";
 import { ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Page } from "../components/ui";
-import { LinkRow } from "../components/ShareLinks";
+import { LinkRow, RecoveryCodeBox } from "../components/ShareLinks";
 import { displayLink, joinLink } from "../myshops";
 import { adminKey, api } from "../util";
 
@@ -228,6 +228,8 @@ function TicketStep({ st, call, reload, back, next }: { st: State; call: Call; r
 function ShareStep({ st, back, next }: { st: State; back: () => void; next: () => void }) {
   const id = st.shop.id;
   const admin = localStorage.getItem(adminKey(id));
+  const recovery = sessionStorage.getItem(`recovery:${id}`);
+  const [saved, setSaved] = useState(!recovery);
   return (
     <section className="panel setup-panel">
       <h2 className="setup-panel__title">部員にリンクを配りましょう</h2>
@@ -235,7 +237,8 @@ function ShareStep({ st, back, next }: { st: State; back: () => void; next: () =
       {st.staffKey && <LinkRow title="部員用リンク" note="レジ・厨房で使う部員に送ります" url={joinLink(id, st.staffKey)} />}
       {admin && <LinkRow title="管理用リンク（代表者だけ）" note="ほかの端末でも管理したいとき用" url={joinLink(id, admin)} warn="なくすと、ほかの端末から管理できなくなります。スクリーンショットかメモで必ず保存してください。部員全体には配らないでください。" />}
       <LinkRow title="呼び出し表示" note="店先のモニターで開きます（誰でも見られます）" url={displayLink(id)} />
-      <Nav back={back} next={next} nextLabel="保存した・配った" />
+      {recovery && <RecoveryCodeBox code={recovery} shopName={st.shop.name} onSaved={setSaved} />}
+      <Nav back={back} next={() => { sessionStorage.removeItem(`recovery:${id}`); next(); }} nextLabel={saved ? "保存した・配った" : "復旧コードを保存してください"} disabled={!saved} />
     </section>
   );
 }

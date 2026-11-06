@@ -1038,3 +1038,12 @@ a.btn { text-decoration: none; }
 .home__terms { justify-self: center; color: var(--muted); font-size: 0.85rem; padding: 8px; }
 .setup-import { display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--r-sm); border: 1px dashed var(--edge); font-size: 0.9rem; color: var(--muted); }
 .start__foot a, .check a { color: inherit; font-weight: 600; }
+
+/* ---------- 復旧コード ---------- */
+.recovery { display: grid; gap: 10px; padding: 14px; border-radius: var(--r); border: 2px solid var(--text); background: var(--surface); }
+.recovery__code { margin: 0; padding: 12px; border-radius: var(--r-sm); background: var(--subtle); text-align: center; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: clamp(1.2rem, 5vw, 1.6rem); font-weight: 700; letter-spacing: 0.08em; user-select: all; }
+.recovery__input { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; letter-spacing: 0.06em; }
+.gate--wide { width: min(520px, 100%); justify-items: stretch; text-align: left; }
+.gate--wide .gate__title, .gate--wide .gate__home { justify-self: center; }
+.btn.is-disabled { pointer-events: none; background: #e9ecef; border-color: #e9ecef; color: #5b6470; }
+.home__terms a { color: inherit; }

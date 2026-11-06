@@ -25,13 +25,15 @@ export function CreateShop() {
     setBusy(true);
     setError("");
     try {
-      const r = await api<{ id: string; adminKey: string; staffKey: string }>("/api/shops", null, {
+      const r = await api<{ id: string; adminKey: string; staffKey: string; recoveryCode?: string }>("/api/shops", null, {
         method: "POST",
         body: JSON.stringify({ name, organization, color, prefix, ticketCount: Number(count || 30) }),
       });
       // 作った端末では、管理も部員の画面もすぐ使えるようにしておく
       localStorage.setItem(adminKey(r.id), r.adminKey);
       localStorage.setItem(codeKey(r.id), r.staffKey);
+      // 復旧コードは「部員に共有」の手順で1回だけ見せる（この端末のこのタブの中だけに置く）
+      if (r.recoveryCode) sessionStorage.setItem(`recovery:${r.id}`, r.recoveryCode);
       const shop = await api<ShopPublic>(`/api/shops/${r.id}/public`, null);
       rememberShop(shop);
       // 続けて、商品・割引・札・共有を1つずつ設定する
