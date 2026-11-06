@@ -73,7 +73,7 @@ export function CreateShop() {
           <p className="hint">番号札は「{ticketLabel(prefix || "A", 5)}」のように表示されます。あとから変えられます。</p>
           <label className="check">
             <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-            <span>お客さんの名前・連絡先などの個人情報は入力しません。学校の模擬店などの会計に使います。</span>
+            <span><a href="/terms" target="_blank" rel="noreferrer">利用規約・プライバシーポリシー</a>に同意します（個人情報は入力しない・最後に使ってから180日で自動削除 など）。</span>
           </label>
           {error && <Banner kind="error">{error}</Banner>}
           <Btn type="submit" variant="accent" big disabled={!name.trim() || !agree || busy}>{busy ? "作っています…" : "店舗をつくる"}</Btn>

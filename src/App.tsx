@@ -10,6 +10,8 @@ import { MasterAdmin } from "./pages/MasterAdmin";
 import { Register } from "./pages/Register";
 import { ShopAdmin } from "./pages/ShopAdmin";
 import { Setup } from "./pages/Setup";
+import { Report } from "./pages/Report";
+import { Terms } from "./pages/Terms";
 import { forgetShop, rememberShop } from "./myshops";
 import { adminKey, api, ApiError, codeKey, load, save } from "./util";
 
@@ -86,7 +88,7 @@ function StaffScreen({ shop, screen }: { shop: ShopPublic; screen: "register" | 
   return screen === "register" ? <Register shopId={shop.id} code={code} onAuthError={clear} /> : <Kitchen shopId={shop.id} code={code} onAuthError={clear} />;
 }
 
-function AdminScreen({ shop, setup }: { shop: ShopPublic; setup?: boolean }) {
+function AdminScreen({ shop, mode }: { shop: ShopPublic; mode?: "setup" | "report" }) {
   const [code, setCode, clear] = useStoredCode(adminKey(shop.id));
   const effective = shop.authRequired ? code : "";
   if (effective == null) {
@@ -103,7 +105,8 @@ function AdminScreen({ shop, setup }: { shop: ShopPublic; setup?: boolean }) {
       />
     );
   }
-  if (setup) return <Setup shopId={shop.id} code={effective} />;
+  if (mode === "setup") return <Setup shopId={shop.id} code={effective} />;
+  if (mode === "report") return <Report shopId={shop.id} code={effective} />;
   return <ShopAdmin shopId={shop.id} code={effective} onAuthError={() => { clear(); location.reload(); }} />;
 }
 
@@ -116,7 +119,8 @@ function ShopRoute({ shopId, screen }: { shopId: string; screen: string }) {
   if (!info) return <Loading />;
   if (screen === "register" || screen === "kitchen") return <StaffScreen key={`${shopId}/${screen}`} shop={info} screen={screen} />;
   if (screen === "admin") return <AdminScreen shop={info} />;
-  if (screen === "setup") return <AdminScreen shop={info} setup />;
+  if (screen === "setup") return <AdminScreen shop={info} mode="setup" />;
+  if (screen === "report") return <AdminScreen shop={info} mode="report" />;
   return <Home />;
 }
 
@@ -129,6 +133,7 @@ export function App() {
 
   if (parts.length === 0) return <Home />;
   if (parts.length === 1 && parts[0] === "new") return <CreateShop />;
+  if (parts.length === 1 && parts[0] === "terms") return <Terms />;
   if (parts.length === 1 && parts[0] === "admin") return <MasterAdmin />;
   if (screen === "display") return <Display shopId={shopId} />;
   if (screen === "join") return <Join shopId={shopId} />;

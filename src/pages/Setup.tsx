@@ -114,6 +114,20 @@ function MenuStep({ st, call, reload, next }: { st: State; call: Call; reload: (
     <section className="panel setup-panel">
       <h2 className="setup-panel__title">商品を登録しましょう</h2>
       <p className="hint">レジのボタンになります。味違い（タレ・塩など）は別々の商品にすると、厨房にも正しく伝わります。色・残り数・並び順は、あとで管理画面から変えられます。</p>
+      <label className="setup-import">
+        <span>前の店舗の「設定のファイル」があれば読み込めます（メニュー・割引・費用）</span>
+        <input type="file" accept="application/json,.json" onChange={async (e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          try {
+            const d = JSON.parse(await f.text());
+            if (await call("/import", body("POST", d))) await reload();
+          } catch {
+            alert("この店舗の設定のファイルではありません");
+          }
+          e.target.value = "";
+        }} />
+      </label>
       <form className="setup-add" onSubmit={(e) => { e.preventDefault(); void add(); }}>
         <label className="field">商品名<input id="setup-item-name" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 焼きそば" maxLength={30} autoFocus /></label>
         <label className="field">値段<span className="input-unit"><input className="input" inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="300" />円</span></label>

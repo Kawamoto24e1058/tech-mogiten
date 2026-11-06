@@ -255,6 +255,19 @@ const sbad = socket(c1.data.id, "register");
 check(!(await sbad.opened.then(() => true, () => false)), "キーなしではレジにつながらない");
 sdisp.ws.close();
 
+// ---- 原価・費用（利益）と、設定の書き出し・読み込み ----
+let s1 = (await req(`${S}/admin/menu`, { code: c1.data.adminKey, method: "POST", body: { name: "スモーク串", price: 200, cost: 45 } })).data;
+check(s1.menu[0].cost === 45, "商品に原価を入れられる");
+s1 = (await req(`${S}/admin/discounts`, { code: c1.data.adminKey, method: "PUT", body: { discounts: [{ name: "2本割", itemIds: [s1.menu[0].id], every: 2, off: 100 }] } })).data;
+s1 = (await req(`${S}/admin/expenses`, { code: c1.data.adminKey, method: "PUT", body: { expenses: [{ name: "テント", amount: 16000 }] } })).data;
+check(s1.expenses.length === 1 && s1.expenses[0].amount === 16000 && s1.totals.sales === 0, "費用を入れられ、全日の合計が返る");
+check((await req(`${S}/admin/expenses`, { code: rot.data.staffKey, method: "PUT", body: { expenses: [] } })).status === 403, "部員用キーでは費用を変えられない");
+const exp = (await req(`${S}/admin/export`, { code: c1.data.adminKey })).data;
+check(exp.format === "mogiten-shop" && exp.menu[0].name === "スモーク串" && exp.discounts[0].itemNames[0] === "スモーク串" && !("orders" in exp), "設定を書き出せる（注文は入らない）");
+const imp = (await req(`/api/shops/${c2.data.id}/admin/import`, { code: c2.data.adminKey, method: "POST", body: exp })).data;
+check(imp.menu.length === 1 && imp.menu[0].cost === 45 && imp.discounts[0].itemIds[0] === imp.menu[0].id && imp.expenses[0].name === "テント", "書き出した設定を別の店舗に読み込める（割引は商品名でつなぎ直す）");
+check((await req(`/api/shops/${c2.data.id}/admin/import`, { code: c2.data.adminKey, method: "POST", body: { foo: 1 } })).status === 400, "設定のファイル以外は読み込めない");
+
 // ---- 店舗の削除 ----
 check((await req(`/api/shops/${c2.data.id}/admin/shop/delete`, { code: c2.data.staffKey, method: "POST", body: { confirm: "スモーク店2" } })).status === 403, "部員用キーでは店舗を削除できない");
 check((await req(`/api/shops/${c2.data.id}/admin/shop/delete`, { code: c2.data.adminKey, method: "POST", body: { confirm: "ちがう名前" } })).status === 400, "店舗名が違うと削除できない");

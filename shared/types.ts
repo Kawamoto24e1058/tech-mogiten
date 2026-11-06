@@ -10,6 +10,25 @@ export interface MenuItem {
   stock: number | null;
   /** 商品の色（MENU_COLORS のキー）。null なら並び順で自動 */
   color: string | null;
+  /** 原価（1個あたり・任意）。利益の計算に使う */
+  cost?: number | null;
+}
+
+/** 機材のレンタル代など、売れた数に関係なくかかる費用 */
+export interface Expense {
+  name: string;
+  amount: number;
+}
+
+/** 店舗の設定の書き出し（来年の店舗に写す・予備） */
+export interface ShopExport {
+  format: "mogiten-shop";
+  version: 1;
+  exportedAt: string;
+  shop: { name: string; organization: string | null; color: string; prefix: string; ticketCount: number };
+  menu: { name: string; price: number; stock: number | null; color: string | null; cost: number | null }[];
+  discounts: { name: string; itemNames: string[]; every: number; off: number; enabled: boolean }[];
+  expenses: Expense[];
 }
 
 /**

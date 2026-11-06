@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DaySummary, DiscountRule, MenuItem, Order, ShopPublic } from "../../shared/types";
+import type { DaySummary, DiscountRule, Expense, MenuItem, Order, ShopExport, ShopPublic } from "../../shared/types";
 import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "../../shared/types";
 import { dayLabel, menuColor, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Modal, Page } from "../components/ui";
@@ -20,6 +20,10 @@ interface AdminState {
   dayTotals: { day: string; sales: number; count: number }[];
   /** 削除した注文（ゴミ箱） */
   trash: Order[];
+  /** 機材のレンタル代など、売れた数に関係ない費用 */
+  expenses: Expense[];
+  /** 全日の合計（利益の計算に使う） */
+  totals: DaySummary;
   tickets: { ticket: number; orderId: string; seq: number; status: string }[];
   days: string[];
   audit: { at: number; action: string; orderId: string | null; detail: Record<string, unknown> }[];
@@ -31,7 +35,7 @@ const STATUS_JA: Record<string, string> = { cooking: "調理中", ready: "でき
 const ACTION_JA: Record<string, string> = {
   cancel: "キャンセル", "ticket.change": "札の変更", "ticket.release": "札を空きに戻す", "menu.add": "メニュー追加",
   "menu.edit": "メニュー変更", "menu.delete": "メニュー削除", settings: "店舗設定の変更", codes: "合言葉・PINの変更",
-  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", "ticket.reuse": "レジで使用中の札を使い直し", reset: "練習データの消去", discounts: "まとめ買い割引の変更", keys: "共有リンクの作り直し", "create.shop": "店舗の作成", delete: "注文を削除（ゴミ箱へ）", restore: "削除した注文を戻す", "delete.day": "その日の注文をまとめて削除",
+  float: "釣り銭準備金", closing: "レジ締め", "ticket.release-all": "札をすべて空きに戻す", "ticket.reuse": "レジで使用中の札を使い直し", reset: "練習データの消去", discounts: "まとめ買い割引の変更", expenses: "費用の変更", import: "設定の読み込み", keys: "共有リンクの作り直し", "create.shop": "店舗の作成", delete: "注文を削除（ゴミ箱へ）", restore: "削除した注文を戻す", "delete.day": "その日の注文をまとめて削除",
 };
 
 type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;
@@ -138,7 +142,9 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
                 <ItemRanking s={sum} />
                 <SlotBars s={sum} />
                 <Btn onClick={() => void downloadCsv()}>この日のCSVを書き出す</Btn>
+                <a className="btn" href={`/${shopId}/report?day=${day}`}>この日の日報を開く（印刷・PDF）</a>
                 <DayTotals st={st} day={day} label={label} onPick={setDay} />
+                <ProfitPanel st={st} mutate={mutate} />
               </>
             )}
             {tab === "orders" && <OrdersTab st={st} mutate={mutate} day={day} dayText={label(day)} label={label} />}
@@ -370,6 +376,7 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [cost, setCost] = useState("");
   const [color, setColor] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const open = (m: MenuItem | "new") => {
@@ -377,6 +384,7 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
     setName(m === "new" ? "" : m.name);
     setPrice(m === "new" ? "" : String(m.price));
     setStock(m === "new" || m.stock == null ? "" : String(m.stock));
+    setCost(m === "new" || m.cost == null ? "" : String(m.cost));
     setColor(m === "new" ? null : m.color);
     setConfirmDelete(false);
   };
@@ -426,8 +434,8 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           <form onSubmit={async (e) => {
             e.preventDefault();
             const ok = editing === "new"
-              ? await mutate("/menu", "POST", { name, price: Number(price), stock: stock === "" ? null : Number(stock), color }, `「${name}」を追加しました`)
-              : await mutate(`/menu/${editing.id}`, "PUT", { name, price: Number(price), stock: stock === "" ? null : Number(stock), color }, `「${name}」を保存しました`);
+              ? await mutate("/menu", "POST", { name, price: Number(price), stock: stock === "" ? null : Number(stock), color, cost: cost === "" ? null : Number(cost) }, `「${name}」を追加しました`)
+              : await mutate(`/menu/${editing.id}`, "PUT", { name, price: Number(price), stock: stock === "" ? null : Number(stock), color, cost: cost === "" ? null : Number(cost) }, `「${name}」を保存しました`);
             if (ok) setEditing(null);
           }}>
             <label className="field">商品名<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 焼きそば" autoFocus /></label>
@@ -454,6 +462,9 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
                 ))}
               </div>
             </div>
+            <label className="field">原価（1個あたり・任意）<small className="muted">仕入れ値・材料費・容器代など。入れると「売上」タブで利益が分かります。お客さんには見えません</small>
+              <span className="input-unit"><input className="input" inputMode="numeric" value={cost} onChange={(e) => setCost(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="空欄" />円</span>
+            </label>
             <label className="field">残り数<small className="muted">用意した数を入れると、売れるたびに減り、0 で自動的に売り切れになります。数えないときは空欄</small>
               <span className="input-unit"><input className="input" inputMode="numeric" value={stock} onChange={(e) => setStock(e.target.value.replace(/\D/g, ""))} placeholder="空欄" />個</span>
             </label>
@@ -671,6 +682,7 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
       </form>
       <SharePanel st={st} mutate={mutate} />
       <PrepPanel st={st} mutate={mutate} />
+      <BackupPanel st={st} mutate={mutate} />
       <DeleteShopPanel st={st} />
     </>
   );
@@ -743,6 +755,110 @@ function SharePanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
           <div className="modal__actions">
             <Btn variant="ghost" onClick={() => setConfirm(null)}>やめる</Btn>
             <Btn variant="danger" onClick={() => void run(confirm)}>作り直す</Btn>
+          </div>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
+/**
+ * 利益の計算（全日の合計）。売上 − 原価（商品ごとの原価 × 売れた数）− 費用（機材など）。
+ * 原価を入れていない商品は 0 円として計算し、そのことを表示する
+ */
+function ProfitPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+  const [list, setList] = useState<Expense[]>(st.expenses);
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => { if (!dirty) setList(st.expenses); }, [st.expenses, dirty]);
+  const costOf = new Map(st.menu.map((m) => [m.id, m.cost ?? null]));
+  const sold = st.totals.items.filter((i) => i.qty > 0 && (costOf.get(i.itemId) !== undefined || !i.itemId.startsWith("discount:")) && i.amount >= 0);
+  const cogs = sold.reduce((a, i) => a + (costOf.get(i.itemId) ?? 0) * i.qty, 0);
+  const noCost = sold.filter((i) => costOf.get(i.itemId) == null).map((i) => i.name);
+  const fixed = list.reduce((a, x) => a + x.amount, 0);
+  const sales = st.totals.sales;
+  const profit = sales - cogs - fixed;
+  const qty = sold.reduce((a, i) => a + i.qty, 0);
+  const perItem = qty > 0 ? (sales - cogs) / qty : 0;
+  const save = async (next: Expense[]) => {
+    if (await mutate("/expenses", "PUT", { expenses: next }, "費用を保存しました")) setDirty(false);
+  };
+  return (
+    <section className="panel">
+      <h3 className="panel__title">利益（全日の合計）</h3>
+      <dl className="profit">
+        <div><dt>売上</dt><dd>{yen(sales)}</dd></div>
+        <div><dt>原価（商品）</dt><dd>−{yen(cogs)}</dd></div>
+        <div><dt>費用（機材など）</dt><dd>−{yen(fixed)}</dd></div>
+        <div className={`profit__total ${profit >= 0 ? "is-ok" : "is-ng"}`}><dt>{profit >= 0 ? "利益（黒字）" : "まだ赤字"}</dt><dd>{profit >= 0 ? yen(profit) : `−${yen(-profit)}`}</dd></div>
+      </dl>
+      {profit < 0 && perItem > 0 && <p className="profit__hint">黒字まであと <b>{yen(-profit)}</b>（今の売れ方なら、あと約 <b>{Math.ceil(-profit / perItem)}個</b>）</p>}
+      {noCost.length > 0 && <p className="hint">原価が未入力の商品（0円として計算）: {noCost.join("、")}。「メニュー」タブで商品を押すと入れられます。</p>}
+      <details className="expenses">
+        <summary>費用を入れる（{list.length}件・{yen(fixed)}）</summary>
+        <ul className="setup-list">
+          {list.map((x, i) => (
+            <li key={i}>
+              <span>{x.name}</span><b>{yen(x.amount)}</b>
+              <button className="link" onClick={() => { const next = list.filter((_, j) => j !== i); setList(next); void save(next); }}>消す</button>
+            </li>
+          ))}
+        </ul>
+        <form className="setup-add" onSubmit={(e) => { e.preventDefault(); if (!name.trim() || !amount) return; const next = [...list, { name: name.trim(), amount: Number(amount) }]; setList(next); setDirty(true); setName(""); setAmount(""); void save(next); }}>
+          <label className="field">費用の名前<input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="例: テント代" maxLength={30} /></label>
+          <label className="field">金額<span className="input-unit"><input className="input" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, "").slice(0, 8))} />円</span></label>
+          <Btn type="submit" disabled={!name.trim() || !amount}>＋ 追加</Btn>
+        </form>
+      </details>
+    </section>
+  );
+}
+
+/** 店舗の設定（メニュー・割引・費用・札）をファイルに書き出す・読み込む。来年の店舗に写す・予備に */
+function BackupPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+  const [file, setFile] = useState<ShopExport | null>(null);
+  const [error, setError] = useState("");
+  const key = localStorage.getItem(adminKey(st.shop.id)) ?? "";
+  const download = async () => {
+    try {
+      const data = await api<ShopExport>(`/api/shops/${encodeURIComponent(st.shop.id)}/admin/export`, key);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+      a.download = `店舗の設定-${st.shop.name}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "書き出せませんでした");
+    }
+  };
+  const pick = async (f: File | undefined) => {
+    setError("");
+    if (!f) return;
+    try {
+      const d = JSON.parse(await f.text()) as ShopExport;
+      if (d.format !== "mogiten-shop") throw new Error();
+      setFile(d);
+    } catch {
+      setError("この店舗の設定のファイルではありません");
+    }
+  };
+  return (
+    <section className="panel">
+      <h3 className="panel__title">設定の書き出し・読み込み</h3>
+      <p className="hint">メニュー・割引・費用・札の設定をファイルにします（売上・注文は入りません）。来年の店舗に写したり、予備として保存したりできます。</p>
+      <div className="row">
+        <Btn onClick={() => void download()}>ファイルに書き出す</Btn>
+        <label className="btn">ファイルを読み込む<input type="file" accept="application/json,.json" hidden onChange={(e) => void pick(e.target.files?.[0])} /></label>
+      </div>
+      {error && <Banner kind="error">{error}</Banner>}
+      {file && (
+        <Modal title="この設定を読み込みますか？" onClose={() => setFile(null)}>
+          <p className="modal__summary">「{file.shop?.name}」の設定 ・ 商品 {file.menu.length}品 ・ 割引 {file.discounts.length}件 ・ 費用 {file.expenses.length}件</p>
+          <Banner kind="warn">今のメニュー・割引・費用は、読み込む内容に置きかわります。売上・注文はそのままです。</Banner>
+          <div className="modal__actions">
+            <Btn variant="ghost" onClick={() => setFile(null)}>やめる</Btn>
+            <Btn variant="accent" onClick={async () => { if (await mutate("/import", "POST", file, "設定を読み込みました")) setFile(null); }}>読み込む</Btn>
           </div>
         </Modal>
       )}

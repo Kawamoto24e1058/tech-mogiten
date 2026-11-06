@@ -21,7 +21,7 @@ export function dayLabel(day: string, start?: string | null): string {
   if (!start) return md;
   const [sy, sm, sd] = start.split("-").map(Number);
   const n = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(sy, sm - 1, sd)) / 86400000) + 1;
-  return n >= 1 && n <= 30 ? `${n}日目 ${md}` : md;
+  return n >= 1 && n <= 10 ? `${n}日目 ${md}` : md;
 }
 
 /** 営業日（日本時間の日付 YYYY-MM-DD） */

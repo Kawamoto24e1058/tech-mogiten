@@ -104,6 +104,7 @@ export function Home() {
         <InstallCard />
 
         {canAdminAny && entries.length > 1 && <a className="home__master" href="/admin">この端末で管理している店舗の売上をまとめて見る</a>}
+        <a className="home__terms" href="/terms">利用規約・プライバシーポリシー</a>
       </main>
     </div>
   );
@@ -179,7 +180,7 @@ function Start() {
           </ol>
         </section>
 
-        <p className="start__foot">お客さんの名前や連絡先などの個人情報は入力しないでください。</p>
+        <p className="start__foot">お客さんの名前や連絡先などの個人情報は入力しないでください。<br /><a href="/terms">利用規約・プライバシーポリシー</a></p>
       </main>
     </div>
   );

@@ -3,7 +3,7 @@ import {
   businessDay, holdsTicket, linesTotal, ordersCsv, priceLines, summarize, ticketLabel,
 } from "../shared/logic";
 import type {
-  ClientMessage, Closing, DiscountRule, DisplaySnapshot, MenuItem, NewOrderInput, Op, Order, OrderStatus,
+  ClientMessage, Closing, DiscountRule, DisplaySnapshot, Expense, MenuItem, ShopExport, NewOrderInput, Op, Order, OrderStatus,
   Role, ServerMessage, ShopPublic, ShopSnapshot,
 } from "../shared/types";
 import { DENOMINATIONS, MENU_COLORS, STAFF_CANCEL_WINDOW_MS } from "../shared/types";
@@ -22,6 +22,8 @@ const DEMO_MENUS: Record<string, [string, number, number | null][]> = {
 /** 渡した後も厨房画面に残す時間（取り消し用） */
 const RECENT_HANDED_MS = 10 * 60 * 1000;
 const AUTH_FAIL_WINDOW_MS = 60 * 1000;
+/** 最後に使ってからこの期間がたった店舗は、データをすべて自動で消す（利用規約にも書く） */
+const RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 const AUTH_FAIL_LIMIT = 10;
 
 type Attachment = { role: Role; screen: string };
@@ -54,6 +56,14 @@ function parseStock(v: unknown): number | null {
   if (v == null || v === "") return null;
   const n = Math.floor(Number(v));
   if (!(n >= 0 && n <= 100000)) throw new HttpError(400, "残り数は0以上の数にしてください");
+  return n;
+}
+
+/** 原価の入力。空欄・null は「入れない」 */
+function parseCost(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = Math.floor(Number(v));
+  if (!(n >= 0 && n <= 100000)) throw new HttpError(400, "原価は0以上の数にしてください");
   return n;
 }
 
@@ -103,6 +113,7 @@ export class ShopDO extends DurableObject<Env> {
     const menuCols = this.sql.exec<{ name: string }>("PRAGMA table_info(menu)").toArray().map((r) => r.name);
     if (!menuCols.includes("stock")) this.sql.exec("ALTER TABLE menu ADD COLUMN stock INTEGER");
     if (!menuCols.includes("color")) this.sql.exec("ALTER TABLE menu ADD COLUMN color TEXT");
+    if (!menuCols.includes("cost")) this.sql.exec("ALTER TABLE menu ADD COLUMN cost INTEGER");
     // 削除した注文はすぐには消さず、deleted_at をつけてゴミ箱に入れる（戻せるように）
     const orderCols = this.sql.exec<{ name: string }>("PRAGMA table_info(orders)").toArray().map((r) => r.name);
     if (!orderCols.includes("deleted_at")) this.sql.exec("ALTER TABLE orders ADD COLUMN deleted_at INTEGER");
@@ -149,6 +160,7 @@ export class ShopDO extends DurableObject<Env> {
     this.set("createdAt", String(Date.now()));
     const keys = await this.issueKeys(["admin", "staff"]);
     this.audit("create.shop", null, { name });
+    await this.touch();
     return keys;
   }
 
@@ -265,13 +277,62 @@ export class ShopDO extends DurableObject<Env> {
 
   private menu(): MenuItem[] {
     return this.sql
-      .exec("SELECT id, name, price, sold_out, sort, stock, color FROM menu WHERE active = 1 ORDER BY sort, rowid")
+      .exec("SELECT id, name, price, sold_out, sort, stock, color, cost FROM menu WHERE active = 1 ORDER BY sort, rowid")
       .toArray()
       .map((r) => ({
         id: r.id as string, name: r.name as string, price: r.price as number, soldOut: r.sold_out === 1, sort: r.sort as number,
         stock: (r.stock as number | null) ?? null,
         color: (r.color as string | null) ?? null,
+        cost: (r.cost as number | null) ?? null,
       }));
+  }
+
+  private expenses(): Expense[] {
+    try {
+      return JSON.parse(this.get("expenses") ?? "[]") as Expense[];
+    } catch {
+      return [];
+    }
+  }
+
+  // ---------- 使われなくなった店舗の自動削除 ----------
+
+  /** 書き込みがあるたびに「最後に使った日時」を更新し、その180日後に削除の予定を入れる（1時間に1回まで） */
+  private async touch() {
+    const now = Date.now();
+    const last = Number(this.get("lastActive") ?? 0);
+    if (now - last < 3600_000) return;
+    this.set("lastActive", String(now));
+    await this.ctx.storage.setAlarm(now + RETENTION_MS);
+  }
+
+  /** 最後に使ってから180日たった店舗のデータをすべて消す */
+  async alarm() {
+    if (!this.get("shopId")) return;
+    const last = Number(this.get("lastActive") ?? 0);
+    if (Date.now() - last < RETENTION_MS) {
+      await this.ctx.storage.setAlarm(last + RETENTION_MS);
+      return;
+    }
+    await this.deleteShop();
+  }
+
+  private async deleteShop() {
+    const id = this.get("shopId") ?? "";
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.close(4004, "店舗が削除されました");
+      } catch {
+        // すでに閉じている
+      }
+    }
+    await this.ctx.storage.deleteAll();
+    this.migrate(); // 空の状態に戻す（以後は「店舗が見つかりません」）
+    try {
+      await this.env.REGISTRY.get(this.env.REGISTRY.idFromName("main")).release(id);
+    } catch {
+      // 記録の削除に失敗しても、店舗のデータは消えている
+    }
   }
 
   private order(id: string): Order | null {
@@ -501,6 +562,7 @@ export class ShopDO extends DurableObject<Env> {
     }
     try {
       const warning = this.applyOp(msg.op);
+      await this.touch();
       ws.send(JSON.stringify({ type: "ack", opId: msg.opId, ok: true, error: warning } satisfies ServerMessage));
       this.broadcast();
     } catch (e) {
@@ -540,6 +602,9 @@ export class ShopDO extends DurableObject<Env> {
       orders,
       dayTotals,
       trash,
+      expenses: this.expenses(),
+      // 全日の合計（利益の計算に使う）
+      totals: summarize("all", this.sql.exec("SELECT * FROM orders WHERE deleted_at IS NULL").toArray().map((r) => ({ ...this.rowToOrder(r), day: "all" })), 0, null),
       tickets: this.activeOrders().filter(holdsTicket).map((o) => ({ ticket: o.ticket!, orderId: o.id, seq: o.seq, status: o.status })),
       days,
       audit,
@@ -584,6 +649,7 @@ export class ShopDO extends DurableObject<Env> {
     await this.ensureShopId(shopId);
     const path = url.pathname.replace(/^\/api\/shops\/[^/]+/, "") || "/";
     const m = req.method;
+    if (m !== "GET") await this.touch();
     const today = businessDay(Date.now());
     const day = url.searchParams.get("day") || today;
 
@@ -700,6 +766,70 @@ export class ShopDO extends DurableObject<Env> {
       return json(this.adminState(day));
     }
 
+    if (p === "/expenses" && m === "PUT") {
+      const b = await this.body<{ expenses: Expense[] }>(req);
+      if (!Array.isArray(b.expenses) || b.expenses.length > 30) throw new HttpError(400, "費用は30件までです");
+      const list = b.expenses.map((x) => {
+        const name = String(x?.name ?? "").trim().slice(0, 30);
+        const amount = Math.floor(Number(x?.amount));
+        if (!name) throw new HttpError(400, "費用の名前を入力してください");
+        if (!(amount >= 0 && amount <= 10_000_000)) throw new HttpError(400, `「${name}」の金額が不正です`);
+        return { name, amount };
+      });
+      this.set("expenses", JSON.stringify(list));
+      this.audit("expenses", null, { count: list.length, total: list.reduce((a, x) => a + x.amount, 0) });
+      return json(this.adminState(day));
+    }
+
+    // 店舗の設定の書き出し（売上・注文は入れない）
+    if (p === "/export" && m === "GET") {
+      const menu = this.menu();
+      const shop = this.shopPublic();
+      const data: ShopExport = {
+        format: "mogiten-shop",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        shop: { name: shop.name, organization: shop.organization ?? null, color: shop.color, prefix: shop.prefix, ticketCount: shop.ticketCount },
+        menu: menu.map((x) => ({ name: x.name, price: x.price, stock: x.stock, color: x.color, cost: x.cost ?? null })),
+        discounts: this.discounts().map((d) => ({ name: d.name, itemNames: d.itemIds.map((i) => menu.find((x) => x.id === i)?.name).filter((n): n is string => !!n), every: d.every, off: d.off, enabled: d.enabled })),
+        expenses: this.expenses(),
+      };
+      return json(data);
+    }
+    // 書き出した設定を読み込む。メニュー・割引・費用・札の設定を置きかえる（売上・注文はそのまま）
+    if (p === "/import" && m === "POST") {
+      const d = await this.body<ShopExport>(req);
+      if (d?.format !== "mogiten-shop" || d.version !== 1 || !Array.isArray(d.menu)) throw new HttpError(400, "この店舗の設定のファイルではありません");
+      if (d.menu.length > 200) throw new HttpError(400, "商品が多すぎます");
+      this.sql.exec("UPDATE menu SET active = 0");
+      const ids = new Map<string, string>();
+      d.menu.forEach((x, i) => {
+        const name = String(x?.name ?? "").trim().slice(0, 30);
+        const price = Math.floor(Number(x?.price));
+        if (!name || !(price >= -100000 && price <= 100000)) return;
+        const id = crypto.randomUUID();
+        ids.set(name, id);
+        this.sql.exec("INSERT INTO menu (id, name, price, sort, stock, color, cost) VALUES (?, ?, ?, ?, ?, ?, ?)", id, name, price, i + 1, parseStock(x.stock), parseColor(x.color), parseCost(x.cost));
+      });
+      const rules: DiscountRule[] = (Array.isArray(d.discounts) ? d.discounts : []).slice(0, 20).flatMap((r) => {
+        const itemIds = (r.itemNames ?? []).map((n) => ids.get(n)).filter((x): x is string => !!x);
+        const every = Math.floor(Number(r.every));
+        const off = Math.floor(Number(r.off));
+        if (!r.name || itemIds.length === 0 || !(every >= 1 && every <= 99) || !(off >= 1 && off <= 100000)) return [];
+        return [{ id: crypto.randomUUID(), name: String(r.name).slice(0, 30), itemIds, every, off, enabled: r.enabled !== false }];
+      });
+      this.set("discounts", JSON.stringify(rules));
+      if (Array.isArray(d.expenses)) this.set("expenses", JSON.stringify(d.expenses.slice(0, 30).map((x) => ({ name: String(x.name).slice(0, 30), amount: Math.max(0, Math.floor(Number(x.amount)) || 0) }))));
+      if (d.shop) {
+        if (d.shop.prefix) this.set("prefix", String(d.shop.prefix).slice(0, 3));
+        const c = Math.floor(Number(d.shop.ticketCount));
+        if (c >= 1 && c <= 999) this.set("ticketCount", String(c));
+      }
+      this.audit("import", null, { menu: ids.size, discounts: rules.length });
+      this.broadcast();
+      return json(this.adminState(day));
+    }
+
     if (p === "/discounts" && m === "PUT") {
       const b = await this.body<{ discounts: DiscountRule[] }>(req);
       if (!Array.isArray(b.discounts) || b.discounts.length > 20) throw new HttpError(400, "割引は20件までです");
@@ -723,7 +853,7 @@ export class ShopDO extends DurableObject<Env> {
     }
 
     if (p === "/menu" && m === "POST") {
-      const b = await this.body<{ name: string; price: number; stock?: number | null; color?: string | null }>(req);
+      const b = await this.body<{ name: string; price: number; stock?: number | null; color?: string | null; cost?: number | null }>(req);
       const name = String(b.name ?? "").trim().slice(0, 30);
       const price = Math.floor(Number(b.price));
       if (!name) throw new HttpError(400, "商品名を入力してください");
@@ -732,7 +862,7 @@ export class ShopDO extends DurableObject<Env> {
       const sort = (this.sql.exec<{ m: number | null }>("SELECT MAX(sort) AS m FROM menu").one().m ?? 0) + 1;
       const id = crypto.randomUUID();
       const color = parseColor(b.color);
-      this.sql.exec("INSERT INTO menu (id, name, price, sort, stock, color) VALUES (?, ?, ?, ?, ?, ?)", id, name, price, sort, stock, color);
+      this.sql.exec("INSERT INTO menu (id, name, price, sort, stock, color, cost) VALUES (?, ?, ?, ?, ?, ?, ?)", id, name, price, sort, stock, color, parseCost(b.cost));
       this.audit("menu.add", null, { id, name, price, stock });
       this.broadcast();
       return json(this.adminState(day));
@@ -740,7 +870,8 @@ export class ShopDO extends DurableObject<Env> {
     if ((seg = p.match(/^\/menu\/([^/]+)$/))) {
       const id = decodeURIComponent(seg[1]);
       if (m === "PUT") {
-        const b = await this.body<Partial<{ name: string; price: number; soldOut: boolean; sort: number; stock: number | null; color: string | null }>>(req);
+        const b = await this.body<Partial<{ name: string; price: number; soldOut: boolean; sort: number; stock: number | null; color: string | null; cost: number | null }>>(req);
+        if (b.cost !== undefined) this.sql.exec("UPDATE menu SET cost = ? WHERE id = ?", parseCost(b.cost), id);
         if (b.color !== undefined) this.sql.exec("UPDATE menu SET color = ? WHERE id = ?", parseColor(b.color), id);
         if (b.name != null) {
           const name = String(b.name).trim().slice(0, 30);
@@ -841,21 +972,7 @@ export class ShopDO extends DurableObject<Env> {
     if (p === "/shop/delete" && m === "POST") {
       const { confirm } = await this.body<{ confirm: string }>(req);
       if (String(confirm ?? "").trim() !== (this.get("name") ?? "")) throw new HttpError(400, "確認のため、店舗名を正しく入力してください");
-      const id = this.get("shopId") ?? "";
-      for (const ws of this.ctx.getWebSockets()) {
-        try {
-          ws.close(4004, "店舗が削除されました");
-        } catch {
-          // すでに閉じている
-        }
-      }
-      await this.ctx.storage.deleteAll();
-      this.migrate(); // 空の状態に戻す（以後は「店舗が見つかりません」）
-      try {
-        await this.env.REGISTRY.get(this.env.REGISTRY.idFromName("main")).release(id);
-      } catch {
-        // 記録の削除に失敗しても、店舗のデータは消えている
-      }
+      await this.deleteShop();
       return json({ ok: true });
     }
 

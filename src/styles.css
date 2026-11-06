@@ -989,3 +989,52 @@ a.btn { text-decoration: none; }
 .setup-list li span { flex: 1; font-weight: 600; }
 .setup-nav { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; padding-top: 6px; }
 .setup-nav .btn--big { width: auto; flex: 1 1 220px; }
+
+/* ---------- 利益 ---------- */
+.profit { margin: 0; display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
+.profit div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--divider); }
+.profit dt { color: var(--muted); font-weight: 600; }
+.profit dd { margin: 0; font-weight: 700; }
+.profit__total { border-bottom: 0 !important; padding: 10px 12px !important; margin-top: 6px; border-radius: var(--r-sm); }
+.profit__total dd { font-size: 1.5rem; }
+.profit__total.is-ok { background: var(--ok-soft); }
+.profit__total.is-ok dt, .profit__total.is-ok dd { color: var(--ok); }
+.profit__total.is-ng { background: var(--danger-soft); }
+.profit__total.is-ng dt, .profit__total.is-ng dd { color: var(--danger); }
+.profit__hint { margin: 0; font-weight: 600; }
+.expenses summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+
+/* ---------- 日報（印刷・PDF） ---------- */
+.report { max-width: 760px; margin: 0 auto; padding: 24px 20px 40px; background: #fff; color: #000; font-variant-numeric: tabular-nums; }
+.report__tools { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 16px; }
+.report__head { border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 16px; }
+.report__head h1 { font-size: 1.6rem; }
+.report__head p { margin: 4px 0 0; }
+.report__muted { color: #3f3f46; font-size: 0.85rem; }
+.report section { margin-bottom: 18px; break-inside: avoid; }
+.report h2 { font-size: 1.05rem; margin-bottom: 6px; }
+.report__table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.report__table th, .report__table td { padding: 6px 8px; border: 1px solid #a1a1aa; text-align: left; }
+.report__table thead th { background: #f4f4f5; }
+.report__table tbody th { width: 40%; background: #fafafa; font-weight: 600; }
+.report__table .num { text-align: right; }
+.report__table .big { font-size: 1.3rem; font-weight: 800; }
+.report__sign { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 12px; align-items: end; margin-top: 28px; }
+.report__line { border-bottom: 1px solid #000; height: 28px; }
+@media print {
+  .no-print { display: none !important; }
+  body, .report { background: #fff !important; }
+  .report { padding: 0; max-width: none; }
+  @page { size: A4; margin: 14mm; }
+}
+
+/* ---------- 利用規約 ---------- */
+.terms { width: 100%; max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; line-height: 1.8; }
+.terms h1 { font-size: 1.5rem; margin-top: 16px; }
+.terms h1#privacy { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--divider); }
+.terms h2 { font-size: 1.05rem; margin-top: 20px; }
+.terms p, .terms ul { margin: 6px 0; }
+.terms__date { color: var(--muted); font-size: 0.9rem; }
+.home__terms { justify-self: center; color: var(--muted); font-size: 0.85rem; padding: 8px; }
+.setup-import { display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--r-sm); border: 1px dashed var(--edge); font-size: 0.9rem; color: var(--muted); }
+.start__foot a, .check a { color: inherit; font-weight: 600; }
