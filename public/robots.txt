@@ -1,2 +1,10 @@
+# トップ・使い方・規約だけを検索に載せる。店舗の画面（/店舗ID/...）は載せない
 User-agent: *
+Allow: /$
+Allow: /guide$
+Allow: /terms$
+Allow: /new$
+Allow: /og.png
 Disallow: /
+
+Sitemap: https://tech-mogiten.momotech.workers.dev/sitemap.xml

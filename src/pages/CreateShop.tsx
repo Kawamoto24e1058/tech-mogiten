@@ -14,7 +14,6 @@ const COLORS = [
 /** 各部・団体が自分の店舗をつくる。できたら共有リンクを出す */
 export function CreateShop() {
   const [name, setName] = useState("");
-  const [organization, setOrganization] = useState("");
   const [color, setColor] = useState(COLORS[0].hex);
   const [count, setCount] = useState("30");
   const [agree, setAgree] = useState(false);
@@ -22,7 +21,9 @@ export function CreateShop() {
   const [error, setError] = useState("");
   const look = { name: name || "新しい店舗", color, prefix: "" };
   const colorName = COLORS.find((c) => c.hex === color)?.name ?? "";
-  const missing = [!name.trim() && "店舗名", !agree && "利用規約への同意"].filter(Boolean).join("と");
+  const missing = [!name.trim() && "お店の名前", !agree && "利用規約への同意"].filter(Boolean).join("と");
+  const n = Number(count || 0);
+  const step = (d: number) => setCount(String(Math.min(999, Math.max(1, (n || 30) + d))));
 
   const submit = async () => {
     setBusy(true);
@@ -30,7 +31,7 @@ export function CreateShop() {
     try {
       const r = await api<{ id: string; adminKey: string; staffKey: string; recoveryCode?: string }>("/api/shops", null, {
         method: "POST",
-        body: JSON.stringify({ name, organization, color, prefix: "", ticketCount: Number(count || 30) }),
+        body: JSON.stringify({ name, color, prefix: "", ticketCount: Number(count || 30) }),
       });
       // 作った端末では、管理も部員の画面もすぐ使えるようにしておく
       localStorage.setItem(adminKey(r.id), r.adminKey);
@@ -56,20 +57,26 @@ export function CreateShop() {
         <div className="create">
           <form className="panel setup-panel" onSubmit={(e) => { e.preventDefault(); if (name.trim() && agree) void submit(); }}>
             <p className="eyebrow">Step 01 / 06</p>
-            <h2 className="setup-panel__title">お店の名前と色</h2>
-            <p className="hint">部・クラス・団体ごとに1つ作ります。データは店舗ごとに分かれていて、ほかの店舗からは見えません。</p>
-            <div className="form-rows">
-              <label className="form-row">
-                <span className="form-row__label">店舗名<small>お客さんに見える名前</small></span>
-                <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={30} required autoFocus placeholder="例: 焼き鳥、たこ焼き" />
-              </label>
-              <label className="form-row">
-                <span className="form-row__label">部・団体名<small>任意</small></span>
-                <input className="input" value={organization} onChange={(e) => setOrganization(e.target.value)} maxLength={40} placeholder="例: 写真部、2年3組" />
-              </label>
-              <div className="form-row">
-                <span className="form-row__label">お店の色<small>{colorName}</small></span>
-                <div className="color-chips" role="radiogroup" aria-label="お店の色">
+            <h2 className="setup-panel__title">お店をつくる</h2>
+            <p className="hint">3つ入れるだけで始められます。どれも、あとから変えられます。</p>
+            <div className="qs">
+              <div className="q">
+                <div className="q__head">
+                  <span className="q__no" aria-hidden>1</span>
+                  <label className="q__label" htmlFor="shop-name">お店の名前</label>
+                  <span className="q__tag q__tag--req">必須</span>
+                </div>
+                <p className="q__help" id="shop-name-help">部・クラス・団体の名前で大丈夫です。レジの上と、お客さん向けの呼び出し画面に出ます。</p>
+                <input id="shop-name" className="input q__input" value={name} onChange={(e) => setName(e.target.value)} maxLength={30} required autoFocus autoComplete="off" aria-describedby="shop-name-help" placeholder="例: テック部、2年3組、写真部 焼き鳥" />
+              </div>
+              <div className="q">
+                <div className="q__head">
+                  <span className="q__no" aria-hidden>2</span>
+                  <span className="q__label" id="shop-color">お店の色</span>
+                  <span className="q__tag">いま: {colorName}</span>
+                </div>
+                <p className="q__help">「会計を確定」などのボタンと、お店の印の色になります。</p>
+                <div className="color-chips" role="radiogroup" aria-labelledby="shop-color">
                   {COLORS.map((c) => (
                     <button key={c.hex} type="button" className={`color-chip ${color === c.hex ? "is-on" : ""}`} role="radio" aria-checked={color === c.hex} aria-label={c.name} title={c.name} style={{ background: c.hex }} onClick={() => setColor(c.hex)}>
                       {color === c.hex && "✓"}
@@ -77,20 +84,29 @@ export function CreateShop() {
                   ))}
                 </div>
               </div>
-              <label className="form-row">
-                <span className="form-row__label">札の枚数<small>あとから変えられます</small></span>
-                <span className="input-unit"><input className="input input--narrow" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, "").slice(0, 3))} />枚</span>
-              </label>
+              <div className="q">
+                <div className="q__head">
+                  <span className="q__no" aria-hidden>3</span>
+                  <label className="q__label" htmlFor="shop-count">番号札の枚数</label>
+                </div>
+                <p className="q__help">お客さんに渡す番号札の数です。札を使わないお店は、そのままで大丈夫です。</p>
+                <div className="stepper">
+                  <button type="button" className="stepper__btn" onClick={() => step(-5)} aria-label="5枚へらす">−</button>
+                  <input id="shop-count" className="input stepper__input" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, "").slice(0, 3))} />
+                  <button type="button" className="stepper__btn" onClick={() => step(5)} aria-label="5枚ふやす">＋</button>
+                  <span className="stepper__unit">枚</span>
+                </div>
+              </div>
             </div>
             <label className="check">
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
               <span><a href="/terms" target="_blank" rel="noreferrer">利用規約・プライバシーポリシー</a>に同意します（個人情報は入力しない・最後に使ってから180日で自動削除 など）。</span>
             </label>
             {error && <Banner kind="error">{error}</Banner>}
-            <Btn type="submit" variant="accent" big disabled={!name.trim() || !agree || busy}>{busy ? "作っています…" : "店舗をつくる"}</Btn>
+            <Btn type="submit" variant="accent" big disabled={!name.trim() || !agree || busy || n < 1}>{busy ? "作っています…" : "店舗をつくる"}</Btn>
             {missing && !busy && <p className="hint create__missing">{missing}が必要です</p>}
           </form>
-          <Preview name={name} organization={organization} />
+          <Preview name={name} />
         </div>
       </main>
     </Page>
@@ -98,7 +114,7 @@ export function CreateShop() {
 }
 
 /** 入力に合わせて、ヘッダー・レジのボタン・呼び出し表示がどう見えるかを見せる（お店の色は親の --accent を使う） */
-function Preview({ name, organization }: { name: string; organization: string }) {
+function Preview({ name }: { name: string }) {
   const shown = name.trim() || "お店の名前";
   return (
     <aside className="preview" aria-label="見え方のプレビュー">
@@ -106,7 +122,6 @@ function Preview({ name, organization }: { name: string; organization: string })
       <div className="preview__bar">
         <span className="shop-badge" aria-hidden>{shown.slice(0, 1)}</span>
         <span className="preview__name">{shown}</span>
-        {organization.trim() && <span className="preview__org">{organization.trim()}</span>}
       </div>
       <div className="preview__call">
         <span className="preview__label">お呼び出し中</span>

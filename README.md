@@ -82,6 +82,9 @@ npm run smoke   # npm run dev を起動した状態で、API の通し確認（�
 ## 本番に公開する
 
 手順は [docs/deploy.md](docs/deploy.md)。おすすめは Cloudflare の管理画面で GitHub とつなぐ方法（プッシュで自動公開）です。
+
+一般公開の前に確認することは [docs/launch.md](docs/launch.md)。
+
 公開したら [docs/device-check.md](docs/device-check.md) で、部員のスマホを使って確認してください。
 
 ## 当日の運用メモ

@@ -12,6 +12,7 @@ import { ShopAdmin } from "./pages/ShopAdmin";
 import { Setup } from "./pages/Setup";
 import { Report } from "./pages/Report";
 import { Terms } from "./pages/Terms";
+import { Guide } from "./pages/Guide";
 import { Recover } from "./pages/Recover";
 import { forgetShop, rememberShop } from "./myshops";
 import { adminKey, api, ApiError, codeKey, load, save } from "./util";
@@ -136,6 +137,7 @@ export function App() {
   if (parts.length === 0) return <Home />;
   if (parts.length === 1 && parts[0] === "new") return <CreateShop />;
   if (parts.length === 1 && parts[0] === "terms") return <Terms />;
+  if (parts.length === 1 && parts[0] === "guide") return <Guide />;
   if (parts.length === 1 && parts[0] === "recover") return <Recover />;
   if (parts.length === 1 && parts[0] === "admin") return <MasterAdmin />;
   if (screen === "display") return <Display shopId={shopId} />;
