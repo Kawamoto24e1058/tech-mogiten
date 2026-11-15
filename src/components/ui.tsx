@@ -45,7 +45,7 @@ export function Money({ value, className = "" }: { value: number; className?: st
 /** 画面全体の枠。店舗の色を --accent として子要素に渡す。 */
 export function Page({ shop, children, className = "" }: { shop: ShopLook | null; children: ReactNode; className?: string }) {
   return (
-    <div className={`page ${className}`} style={accentStyle(shop?.color)}>
+    <div className={`page page--grid ${className}`} style={accentStyle(shop?.color)}>
       {children}
     </div>
   );

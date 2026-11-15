@@ -1423,10 +1423,10 @@ a.appbar__home:hover { background: #f2f2f3; }
   .page--grid .admin { margin: 0; padding: 8px 48px 64px; }
 
   /* 見出しを左の列、中身を右の列に（新聞のような2段組み） */
-  .page--grid .admin > .panel { display: block; position: relative; padding-left: 200px; }
-  .page--grid .admin > .panel > .panel__title { position: absolute; left: 0; top: 26px; width: 176px; font-size: 0.9rem; }
-  .page--grid .admin > .panel > * + * { margin-top: 12px; }
-  .page--grid .admin > .panel > .panel__title + * { margin-top: 0; }
+  .page--sided .admin > .panel { display: block; position: relative; padding-left: 200px; }
+  .page--sided .admin > .panel > .panel__title { position: absolute; left: 0; top: 26px; width: 176px; font-size: 0.9rem; }
+  .page--sided .admin > .panel > * + * { margin-top: 12px; }
+  .page--sided .admin > .panel > .panel__title + * { margin-top: 0; }
 
   /* サイドバー */
   .side {
@@ -1479,16 +1479,16 @@ a.appbar__home:hover { background: #f2f2f3; }
 .q__tag { padding: 1px 8px; border-radius: 999px; background: #f0f0f1; color: #3f3f46; font-size: 0.75rem; font-weight: 700; }
 .q__tag--req { background: var(--accent); color: var(--on-accent); }
 .q__help { margin: 0 0 4px 34px; color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
-.q > .input, .q > .color-chips, .q > .stepper { margin-left: 34px; width: calc(100% - 34px); }
+.q > .input, .q > .color-chips, .q > .count-stepper { margin-left: 34px; width: calc(100% - 34px); }
 .q__input { min-height: 56px; font-size: 1.1rem; border-width: 1.5px; }
 @media (max-width: 520px) {
-  .q__help, .q > .input, .q > .color-chips, .q > .stepper { margin-left: 0; width: 100%; }
+  .q__help, .q > .input, .q > .color-chips, .q > .count-stepper { margin-left: 0; width: 100%; }
 }
-.stepper { display: flex; align-items: center; gap: 8px; }
-.stepper__btn { width: 48px; height: 48px; border-radius: 8px; border: 1px solid var(--edge); background: #fff; font-size: 1.4rem; font-weight: 600; line-height: 1; }
-.stepper__btn:hover { background: #f6f6f7; }
-.stepper__input { width: 88px; min-height: 48px; text-align: center; font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.stepper__unit { font-weight: 700; }
+.count-stepper { display: flex; align-items: center; gap: 8px; }
+.count-stepper__btn { width: 48px; height: 48px; border-radius: 8px; border: 1px solid var(--edge); background: #fff; font-size: 1.4rem; font-weight: 600; line-height: 1; }
+.count-stepper__btn:hover { background: #f6f6f7; }
+.count-stepper__input { width: 88px; min-height: 48px; text-align: center; font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.count-stepper__unit { font-weight: 700; }
 .page--create .check { padding: 18px 0 4px; }
 
 /* ---------- 使い方・よくある質問（/guide） ---------- */
@@ -1525,3 +1525,101 @@ a.appbar__home:hover { background: #f2f2f3; }
 .guide-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 8px; padding: 24px 16px 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
 @media (max-width: 560px) { .guide__grid { grid-template-columns: 1fr; } }
 .guide__end-body { display: grid; gap: 16px; justify-items: start; }
+
+/* =====================================================================
+ * 全画面の統一（構造を見せる）: 白い地・1px の線・左上に大きな見出し
+ * ===================================================================== */
+.page--grid, .home-page--list { background: #fff; }
+
+/* ホーム（店舗がある端末）: 店舗をカードにせず、線で区切った行に */
+.home-page--list .home { max-width: 880px; gap: 0; padding: 0 16px 48px; }
+.home-page--list .home__head { display: grid; gap: 6px; padding: 40px 0 20px; border-bottom: 1px solid var(--line); }
+.home-page--list .home__title { font-size: clamp(1.8rem, 4.5vw, 2.6rem); letter-spacing: -0.035em; line-height: 1.15; }
+.home-page--list .home__lead { margin: 0; }
+.home-page--list .home__joined, .home-page--list .resume { margin-top: 16px; }
+.home-page--list .resume { border-radius: 10px; }
+.home-page--list .home-shop { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; padding: 20px 0; display: grid; gap: 12px; }
+.home-page--list .home-shop__name { padding: 0; font-size: 1.25rem; letter-spacing: -0.02em; }
+.home-page--list .home-shop__name::before { display: none; }
+.home-page--list .home-shop__name .shop-badge { width: 28px; height: 28px; border-radius: 7px; font-size: 0.85rem; }
+.home-page--list .role-grid { padding: 0; }
+.home-page--list .role { min-height: 88px; border-radius: 10px; }
+.home-page--list .role-links { padding: 0; }
+.home-page--list .home-shop__locked { margin: 0; }
+.home-page--list .home-more { gap: 0; }
+.home-page--list .home-new { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 20px 0; }
+.home-page--list .home-new b { font-size: 1.05rem; }
+.home-page--list .home-new:hover b { text-decoration: underline; }
+.home-page--list .join-link--compact { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 20px 0; background: transparent; }
+.home-page--list .install { margin-top: 20px; border-radius: 10px; box-shadow: none; }
+.home-page--list .home__master { margin-top: 12px; }
+.home-page--list .home__terms { margin-top: 16px; }
+@media (min-width: 720px) {
+  .home-page--list .home-shop { grid-template-columns: 220px minmax(0, 1fr); align-items: start; column-gap: 24px; }
+  .home-page--list .home-shop__name { grid-row: span 2; padding-top: 6px; }
+}
+
+/* リンクを開く・合言葉・復旧など（.gate）: カードにせず白地にそのまま */
+.page--center { background: #fff; }
+.gate { border: 0 !important; box-shadow: none !important; background: transparent; padding: 24px 0; }
+.gate__title { font-size: clamp(1.5rem, 4vw, 2rem); letter-spacing: -0.03em; }
+.gate--wide .gate__title { justify-self: start; }
+.gate--wide { width: min(560px, 100%); }
+
+/* 規約 */
+.terms { max-width: 760px; padding-top: 40px; }
+.terms > h1 { font-size: clamp(1.8rem, 4.5vw, 2.4rem); letter-spacing: -0.03em; margin-top: 0; }
+.terms > h2 { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+.terms h1#privacy { margin-top: 56px; padding-top: 40px; border-top: 1px solid var(--text); }
+
+/* はじめの設定（2〜6）も、店舗をつくると同じ組み方 */
+.page--create .setup-panel .setup-panel__title { margin-top: 0; }
+.page--create .setup-nav { padding-top: 12px; border-top: 1px solid var(--line); margin-top: 8px; justify-content: flex-start; }
+
+/* まとめて見る: 店舗ごとのカードを線で区切った行に */
+.page--grid .shop-cards { grid-template-columns: 1fr; gap: 0; border-top: 1px solid var(--line); }
+.page--grid .shop-card { border: 0 !important; border-bottom: 1px solid var(--line) !important; border-radius: 0; box-shadow: none !important; padding: 20px 0; background: transparent; }
+
+/* レジ・厨房: 地を白にし、面は線だけ（影なし） */
+.page--grid .pay, .page--grid .order-list, .page--grid .handed, .page--grid .kcard { box-shadow: none; }
+
+.page--create .admin > .setup-panel { border-top: 0; padding: 24px 16px 40px; }
+@media (min-width: 960px) { .page--create .admin > .setup-panel { padding: 40px 48px 56px; } }
+.page--create .setup-panel .eyebrow { margin-bottom: 0; }
+.page--grid .admin > .day-select { padding: 20px 0 16px; }
+/* 厨房（広い画面）: 3列を縦の線で区切る。空のときは文字だけ */
+.page--grid .kitchen-wide { gap: 0; padding: 0; align-items: stretch; }
+.page--grid .kitchen-wide .kcol { padding: 16px; min-height: calc(100dvh - 56px); }
+.page--grid .kitchen-wide .kcol + .kcol { border-left: 1px solid var(--line); }
+.page--grid .kcol__title { padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 1.05rem; }
+.page--grid .kcol__empty { border: 0; padding: 32px 8px; }
+
+/* レジ（タブレット・PC）: どの高さでも「会計を確定」が画面内に収まるように
+   よく使う金額は1行4つに固定し、注文の一覧が残りの高さを使って中でスクロールする */
+.page--fit .quick { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.page--fit .quick .chip { padding: 2px; font-size: 0.85rem; white-space: nowrap; }
+.page--fit .register-wide--flow .order-list { flex: 1 1 auto; min-height: 64px; }
+.page--fit .banners { padding: 8px 12px 0; }
+.page--fit .banner { padding-top: 8px; padding-bottom: 8px; }
+@media (max-height: 820px) {
+  .page--fit .register-wide--flow .pay { gap: 6px; padding: 10px 12px; }
+  .page--fit .register-wide--flow .pay .step-title { display: none; }
+  .page--fit .register-wide--flow .pay__line--total .money { font-size: 1.7rem; }
+  .page--fit .register-wide--flow .pay__change { padding: 4px 12px; }
+  .page--fit .register-wide--flow .pay__change .money, .page--fit .register-wide--flow .pay__change .pay__dash { font-size: 1.8rem; }
+  .page--fit .register-wide--flow .breakdown { display: none; }
+}
+@media (max-height: 680px) {
+  .page--fit .register-wide--flow .order-list { min-height: 40px; padding: 6px 12px; }
+  .page--fit .register-wide--flow .pay__sum { padding-bottom: 2px; }
+  .page--fit .register-wide--flow .keypad { gap: 4px; }
+}
+/* とても低い画面（iPad の Safari など）では、注文の一覧を畳んで点数だけにする。数はメニューのボタンの丸い数字で分かる */
+@media (max-height: 720px) {
+  .page--fit .register-wide--flow .order-list { flex: 0 0 auto; min-height: 0; padding: 8px 12px; }
+  .page--fit .register-wide--flow .order-list > ul, .page--fit .register-wide--flow .order-list > .hint { display: none; }
+}
+@media (max-height: 680px) {
+  .page--fit .register-wide--flow .order-list { padding: 2px 12px; }
+  .page--fit .register-wide--flow .pay { padding: 6px 10px; gap: 5px; }
+}

@@ -65,9 +65,9 @@ export function Setup({ shopId, code }: { shopId: string; code: string }) {
 
   const shop = st?.shop ?? null;
   return (
-    <Page shop={shop} className="page--work">
+    <Page shop={shop} className="page--work page--create">
       <AppBar shop={shop} title="はじめの設定" back="/" />
-      <main className="admin setup">
+      <main className="admin setup setup--create">
         <SetupSteps step={step} />
         {error && <Banner kind="error">{error}</Banner>}
         {!st ? <p className="hint">読み込んでいます…</p> : (

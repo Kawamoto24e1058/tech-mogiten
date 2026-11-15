@@ -1,9 +1,11 @@
+import { SiteHeader } from "../components/SiteHeader";
+
 /** 利用規約・プライバシーポリシー */
 export function Terms() {
   return (
-    <div className="page home-page">
+    <div className="page page--grid">
+      <SiteHeader />
       <main className="terms">
-        <a className="link" href="/">← トップに戻る</a>
         <h1>利用規約</h1>
         <p className="terms__date">制定: 2026年11月6日</p>
 

@@ -1,4 +1,4 @@
-import { Logo } from "../components/Logo";
+import { SiteHeader } from "../components/SiteHeader";
 
 const STEPS: [string, string][] = [
   ["お店をつくる", "代表者が「店舗をつくる」から、お店の名前を入れます。登録やログインはいりません。"],
@@ -29,10 +29,7 @@ const FAQ: [string, string][] = [
 export function Guide() {
   return (
     <div className="page page--grid guide-page">
-      <header className="guide-top">
-        <a className="guide-top__brand" href="/"><Logo size={26} /><span>模擬店レジ</span></a>
-        <a className="btn guide-top__cta" href="/new">店舗をつくる</a>
-      </header>
+      <SiteHeader />
       <main className="guide">
         <section className="guide__hero">
           <p className="eyebrow">Guide</p>

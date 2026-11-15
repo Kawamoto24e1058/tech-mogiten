@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { accentStyle } from "../components/ui";
 import { IconNext } from "../components/icons";
+import { SiteHeader } from "../components/SiteHeader";
 import { Logo } from "../components/Logo";
 import { canPromptInstall, isIOS, isStandalone, onInstallChange, promptInstall } from "../install";
 import { forgetShop, myShops, type MyShop } from "../myshops";
@@ -39,14 +40,12 @@ export function Home() {
   const canAdminAny = entries.some((e) => e.open || localStorage.getItem(adminKey(e.id)));
 
   return (
-    <div className="page home-page">
+    <div className="page page--grid home-page home-page--list">
+      <SiteHeader />
       <main className="home">
         <header className="home__head">
-          <Logo size={44} />
-          <div>
-            <h1 className="home__title">模擬店レジ</h1>
-            <p className="home__lead">自分のお店の、担当の画面を押してください。</p>
-          </div>
+          <h1 className="home__title">あなたの店舗</h1>
+          <p className="home__lead">自分のお店の、担当の画面を押してください。</p>
         </header>
 
         {joined && entries.some((e) => e.id === joined) && (
@@ -66,7 +65,7 @@ export function Home() {
           const admin = s.open || !!localStorage.getItem(adminKey(s.id));
           return (
             <section key={s.id} className="home-shop" style={accentStyle(s.color)} aria-label={s.name}>
-              <h2 className="home-shop__name">{s.name}{s.organization && <small className="home-shop__org">{s.organization}</small>}</h2>
+              <h2 className="home-shop__name"><span className="shop-badge" aria-hidden>{s.prefix || s.name.slice(0, 1)}</span>{s.name}{s.organization && <small className="home-shop__org">{s.organization}</small>}</h2>
               {staff ? (
                 <div className="role-grid">
                   <a className="role role--main" href={`/${s.id}/register`}>

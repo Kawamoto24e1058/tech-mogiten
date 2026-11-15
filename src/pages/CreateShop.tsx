@@ -90,11 +90,11 @@ export function CreateShop() {
                   <label className="q__label" htmlFor="shop-count">番号札の枚数</label>
                 </div>
                 <p className="q__help">お客さんに渡す番号札の数です。札を使わないお店は、そのままで大丈夫です。</p>
-                <div className="stepper">
-                  <button type="button" className="stepper__btn" onClick={() => step(-5)} aria-label="5枚へらす">−</button>
-                  <input id="shop-count" className="input stepper__input" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, "").slice(0, 3))} />
-                  <button type="button" className="stepper__btn" onClick={() => step(5)} aria-label="5枚ふやす">＋</button>
-                  <span className="stepper__unit">枚</span>
+                <div className="count-stepper">
+                  <button type="button" className="count-stepper__btn" onClick={() => step(-5)} aria-label="5枚へらす">−</button>
+                  <input id="shop-count" className="input count-stepper__input" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, "").slice(0, 3))} />
+                  <button type="button" className="count-stepper__btn" onClick={() => step(5)} aria-label="5枚ふやす">＋</button>
+                  <span className="count-stepper__unit">枚</span>
                 </div>
               </div>
             </div>

@@ -3,7 +3,7 @@
 文化祭の模擬店向けのレジ・厨房・呼び出し・管理の画面。各部・団体が自分の店舗をつくり、共有リンク（推測できないキー）で守る。店舗ごとに Durable Object を分け、店舗の一覧は公開しない。要件は `docs/requirements.md`、起動方法は `README.md`、一般公開の前の確認は `docs/launch.md`。使い方・よくある質問は `/guide`（検索に載せるのはトップ・使い方・規約だけ）。
 
 - `npm run dev` で画面と API（Worker + Durable Object）が http://localhost:5173 で動く
-- 変更したら `npm run typecheck` と `npm test`、API を触ったら `npm run smoke`（dev 起動中・注文なしの状態で）
+- 変更したら `npm run typecheck` と `npm test`、API を触ったら `npm run smoke`（dev 起動中・注文なしの状態で）。画面の流れを変えたら `npm run e2e`（店舗作成→設定→レジ→厨房→呼び出し→売上→締め→復旧→削除、電波切れ）
 
 ## デザインの方向性
 
