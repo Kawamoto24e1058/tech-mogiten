@@ -12,10 +12,16 @@ function Qr({ text }: { text: string }) {
   return <div className="qr" role="img" aria-label="QRコード" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
-/** リンク1つ分: コピー・QRコード */
-export function LinkRow({ title, note, url, warn }: { title: string; note: string; url: string; warn?: string }) {
+/**
+ * リンク1つ分。「誰に・何ができるか」を先に書き、送る・コピー・QR を並べる。
+ * URL そのものは長くて分かりにくいので、必要なときだけ開いて見せる
+ */
+export function LinkRow({ who, title, note, url, warn, openHere, tone = "default" }: {
+  who: string; title: string; note: string; url: string; warn?: string; openHere?: boolean; tone?: "default" | "private";
+}) {
   const [copied, setCopied] = useState(false);
   const [qr, setQr] = useState(false);
+  const canShare = typeof navigator !== "undefined" && "share" in navigator;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url);
@@ -33,19 +39,29 @@ export function LinkRow({ title, note, url, warn }: { title: string; note: strin
     }
   };
   return (
-    <div className="link-row">
+    <div className={`link-row link-row--${tone}`}>
       <div className="link-row__head">
-        <b>{title}</b>
-        <span className="hint">{note}</span>
+        <span className="link-row__who">{who}</span>
+        <b className="link-row__title">{title}</b>
+        <span className="link-row__note">{note}</span>
       </div>
       {warn && <Banner kind="warn">{warn}</Banner>}
-      <input className="input link-row__url" readOnly value={url} onFocus={(e) => e.currentTarget.select()} aria-label={`${title}のURL`} />
-      <div className="row">
-        <Btn onClick={() => void copy()}>{copied ? "コピーしました" : "コピー"}</Btn>
-        {"share" in navigator && <Btn onClick={() => void share()}>送る（LINEなど）</Btn>}
+      <div className="row link-row__actions">
+        {canShare && tone !== "private" && <Btn variant="accent" onClick={() => void share()}>LINE などで送る</Btn>}
+        <Btn variant={!canShare && tone !== "private" ? "accent" : "default"} onClick={() => void copy()}>{copied ? "✓ コピーしました" : "リンクをコピー"}</Btn>
+        {openHere && <a className="btn" href={url} target="_blank" rel="noreferrer">この端末で開く</a>}
         <Btn variant="ghost" onClick={() => setQr(!qr)} ariaLabel={`${title}のQRコードを${qr ? "閉じる" : "表示"}`}>{qr ? "QRを閉じる" : "QRコード"}</Btn>
       </div>
-      {qr && <Qr text={url} />}
+      {qr && (
+        <div className="link-row__qr">
+          <Qr text={url} />
+          <span className="hint">相手のスマホのカメラで読み取ると開けます。</span>
+        </div>
+      )}
+      <details className="link-row__raw">
+        <summary>リンクの文字を見る</summary>
+        <input className="input link-row__url" readOnly value={url} onFocus={(e) => e.currentTarget.select()} aria-label={`${title}のURL`} />
+      </details>
     </div>
   );
 }
@@ -65,8 +81,9 @@ export function RecoveryCodeBox({ code, shopName, onSaved }: { code: string; sho
   return (
     <div className="recovery">
       <div className="link-row__head">
-        <b>復旧コード（代表者だけ）</b>
-        <span className="hint">管理用リンクをなくしたときに、新しい管理用リンクを出すためのコードです。<b>この画面でしか表示されません。</b></span>
+        <span className="link-row__who">代表者だけが保存</span>
+        <b className="link-row__title">復旧コード</b>
+        <span className="link-row__note">管理用リンクをなくしたときに、新しい管理用リンクを出すためのコードです。<b>この画面でしか表示されません。</b></span>
       </div>
       <p className="recovery__code" aria-label="復旧コード">{code}</p>
       <div className="row">

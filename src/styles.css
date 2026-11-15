@@ -1623,3 +1623,64 @@ a.appbar__home:hover { background: #f2f2f3; }
   .page--fit .register-wide--flow .order-list { padding: 2px 12px; }
   .page--fit .register-wide--flow .pay { padding: 6px 10px; gap: 5px; }
 }
+
+/* =====================================================================
+ * 割引・番号札・リンク: 「何のためか → 1つずつ質問 → その場で結果を見せる」
+ * ===================================================================== */
+.q > .pick-chips, .q > .amount-row, .q > .choice, .q > .tk-preview, .q > .input--date, .q > .field-error { margin-left: 34px; }
+@media (max-width: 520px) { .q > .pick-chips, .q > .amount-row, .q > .choice, .q > .tk-preview, .q > .input--date, .q > .field-error { margin-left: 0; } }
+.q > .input--date { width: auto; max-width: 240px; }
+.pick-chip__price { margin-left: 6px; font-weight: 500; color: var(--muted); font-size: 0.8rem; }
+.pick-chip.is-on .pick-chip__price { color: inherit; }
+.amount-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-weight: 700; }
+.amount-row__input { width: 120px; min-height: 52px; text-align: right; font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.amount-row__save { padding: 3px 10px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); font-size: 0.85rem; }
+.field-error { margin: 0; color: var(--danger); font-weight: 700; font-size: 0.9rem; }
+
+.disc { display: grid; gap: 16px; }
+.disc-preview { padding: 14px 16px; border-radius: 10px; background: #f6f6f7; border: 1px solid var(--line); }
+.disc-preview__title { margin: 0 0 8px; font-weight: 700; font-size: 0.9rem; }
+.disc-preview table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.disc-preview th { text-align: left; font-weight: 500; padding: 6px 0; }
+.disc-preview td { text-align: right; padding: 6px 0 6px 12px; white-space: nowrap; }
+.disc-preview tr + tr th, .disc-preview tr + tr td { border-top: 1px solid var(--line); }
+.disc-preview s { color: var(--muted); font-size: 0.9em; }
+.disc-preview tr.is-off b { color: var(--ok); }
+.disc__name { max-width: 420px; }
+.disc__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: flex-end; }
+.modal .disc .q__help { margin-left: 34px; }
+
+/* 番号札の使い方（3つの流れ） */
+.tk-flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 10px; counter-reset: tk; }
+.tk-flow li { display: grid; gap: 2px; padding: 12px 14px; font-size: 0.9rem; color: var(--muted); line-height: 1.5; counter-increment: tk; }
+.tk-flow li + li { border-left: 1px solid var(--line); }
+.tk-flow li b { color: var(--text); font-size: 0.95rem; }
+.tk-flow li b::before { content: counter(tk) ". "; font-family: var(--mono); color: #6b6b72; }
+@media (max-width: 560px) { .tk-flow { grid-template-columns: 1fr; } .tk-flow li + li { border-left: 0; border-top: 1px solid var(--line); } }
+.tk-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tk-preview__tk {
+  --notch: 5px; display: grid; place-items: center; min-width: 44px; height: 30px; padding: 0 10px; border-radius: 5px; background: #18181b; color: #fff; font-weight: 700; font-size: 0.85rem; font-variant-numeric: tabular-nums;
+  -webkit-mask: radial-gradient(circle var(--notch) at 0 50%, transparent 97%, #000) left / 51% 100% no-repeat, radial-gradient(circle var(--notch) at 100% 50%, transparent 97%, #000) right / 51% 100% no-repeat;
+          mask: radial-gradient(circle var(--notch) at 0 50%, transparent 97%, #000) left / 51% 100% no-repeat, radial-gradient(circle var(--notch) at 100% 50%, transparent 97%, #000) right / 51% 100% no-repeat;
+}
+.tk-preview__more { color: var(--muted); font-weight: 600; font-size: 0.9rem; }
+.choice { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 10px; }
+.choice__btn { display: grid; gap: 2px; justify-items: start; min-height: 64px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--edge); background: #fff; text-align: left; }
+.choice__btn span { color: var(--muted); font-size: 0.85rem; }
+.choice__btn.is-on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.choice__btn.is-on b::before { content: "✓ "; color: var(--accent); }
+
+/* リンク: 誰に → 何ができる → 送る・コピー・QR。URL は畳んでおく */
+.link-rows { display: grid; border-top: 1px solid var(--line); }
+.link-rows .link-row { padding: 18px 0; border-top: 0; border-bottom: 1px solid var(--line); gap: 10px; }
+.link-row__head { display: grid; gap: 2px; }
+.link-row__who { justify-self: start; padding: 1px 8px; border-radius: 999px; background: #f0f0f1; color: #3f3f46; font-size: 0.75rem; font-weight: 700; }
+.link-row--private .link-row__who { background: #18181b; color: #fff; }
+.link-row__title { font-size: 1.1rem; letter-spacing: -0.01em; }
+.link-row__note { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+.link-row__actions { gap: 8px; }
+.link-row__qr { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.link-row__raw summary { display: inline-flex; align-items: center; min-height: 40px; color: var(--muted); font-size: 0.85rem; cursor: pointer; }
+.link-row__raw .input { margin-top: 4px; font-size: 0.85rem; }
+.recovery .link-row__head { margin-bottom: 6px; }
+.disc-preview__title small { margin-left: 6px; font-weight: 500; color: var(--muted); }

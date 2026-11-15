@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DiscountRule, MenuItem, ShopPublic } from "../../shared/types";
-import { ticketLabel, yen } from "../../shared/logic";
+import { yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Page } from "../components/ui";
 import { LinkRow, RecoveryCodeBox } from "../components/ShareLinks";
+import { DiscountEditor, describeRule } from "../components/DiscountEditor";
+import { TicketFields } from "../components/TicketFields";
 import { displayLink, joinLink } from "../myshops";
 import { adminKey, api } from "../util";
 
@@ -154,47 +156,36 @@ function MenuStep({ st, call, reload, next }: { st: State; call: Call; reload: (
 /** 3. まとめ買い割引（任意） */
 function DiscountStep({ st, call, reload, back, next }: { st: State; call: Call; reload: () => Promise<void>; back: () => void; next: () => void }) {
   const items = st.menu.filter((m) => m.price > 0);
-  const [ids, setIds] = useState<string[]>([]);
-  const [every, setEvery] = useState("2");
-  const [off, setOff] = useState("");
-  const [name, setName] = useState("セット割");
-  const sample = items.find((m) => ids.includes(m.id));
-  const n = Number(every || 0);
-  const save = async () => {
-    const rule = { id: "", name, itemIds: ids, every: n, off: Number(off), enabled: true };
-    if (await call("/discounts", body("PUT", { discounts: [...st.discounts, rule] }))) {
+  const [key, setKey] = useState(0);
+  const [draft, setDraft] = useState<DiscountRule | null>(null);
+  const put = async (list: DiscountRule[]) => {
+    if (await call("/discounts", body("PUT", { discounts: list }))) {
       await reload();
-      setIds([]);
-      setOff("");
+      return true;
     }
+    return false;
   };
   return (
     <section className="panel setup-panel">
       <p className="eyebrow">Step 03 / 06</p>
-      <h2 className="setup-panel__title">割引を使いますか？（任意）</h2>
-      <p className="hint">「2本で300円」のような、まとめて買うと安くなる割引です。レジで自動で引かれます。使わないなら「次へ」で飛ばせます。</p>
+      <h2 className="setup-panel__title">まとめ買い割引を使いますか？</h2>
+      <p className="hint">「焼き鳥2本で250円」のような割引です。レジで対象の商品を選ぶと、<b>自動で</b>値引きされます（押し忘れがありません）。使わないなら、下の「割引なしで次へ」で飛ばせます。</p>
       {st.discounts.length > 0 && (
         <ul className="setup-list">
-          {st.discounts.map((d) => <li key={d.id}><span>{d.name}</span><b>{d.every}個ごとに −{yen(d.off)}</b></li>)}
+          {st.discounts.map((d) => (
+            <li key={d.id}>
+              <span>{d.name}<small className="discount-row__desc">{describeRule(d, st.menu)}</small></span>
+              <button className="link" onClick={() => void put(st.discounts.filter((x) => x.id !== d.id))} aria-label={`${d.name}を消す`}>消す</button>
+            </li>
+          ))}
         </ul>
       )}
-      <div className="field">対象の商品（合わせて数えます）
-        <div className="pick-chips">
-          {items.map((m) => (
-            <button key={m.id} type="button" className={`pick-chip ${ids.includes(m.id) ? "is-on" : ""}`} aria-pressed={ids.includes(m.id)} onClick={() => setIds(ids.includes(m.id) ? ids.filter((x) => x !== m.id) : [...ids, m.id])}>
-              {ids.includes(m.id) ? "✓ " : ""}{m.name}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="field-row">
-        <label className="field">何個ごと<span className="input-unit"><input className="input input--narrow" inputMode="numeric" value={every} onChange={(e) => setEvery(e.target.value.replace(/\D/g, "").slice(0, 2))} />個ごとに</span></label>
-        <label className="field">引く金額<span className="input-unit"><input className="input input--narrow" inputMode="numeric" value={off} onChange={(e) => setOff(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="100" />円引き</span></label>
-        <label className="field">名前<input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={30} /></label>
-      </div>
-      {sample && n >= 1 && Number(off) > 0 && <p className="discount-example">例: {sample.name} 1個 {yen(sample.price)} → {n}個 {yen(sample.price * n - Number(off))}</p>}
-      <Btn onClick={() => void save()} disabled={ids.length === 0 || !(n >= 1) || !(Number(off) > 0) || !name.trim()}>この割引を追加</Btn>
-      <Nav back={back} next={next} nextLabel={st.discounts.length ? "次へ" : "割引なしで次へ"} />
+      <DiscountEditor key={key} items={items} onDraft={setDraft} saveLabel={st.discounts.length ? "もう1つ割引を追加" : "この割引を追加"} onSave={async (rule) => { if (await put([...st.discounts, rule])) { setKey(key + 1); setDraft(null); } }} />
+      <Nav
+        back={back}
+        next={async () => { if (draft && !(await put([...st.discounts, draft]))) return; next(); }}
+        nextLabel={draft ? "この割引を追加して次へ" : st.discounts.length ? `割引${st.discounts.length}件で次へ` : "割引なしで次へ"}
+      />
     </section>
   );
 }
@@ -213,16 +204,14 @@ function TicketStep({ st, call, reload, back, next }: { st: State; call: Call; r
   return (
     <section className="panel setup-panel">
       <p className="eyebrow">Step 04 / 06</p>
-      <h2 className="setup-panel__title">番号札と開催日</h2>
-      <p className="hint">会計のときにお客さんに渡す札です。用意する枚数に合わせてください（行列の長さの目安 × 1.5 くらいが安心です）。</p>
-      <div className="field-row">
-        <label className="field">札の枚数<input className="input input--narrow" inputMode="numeric" value={count} onChange={(e) => setCount(e.target.value.replace(/\D/g, "").slice(0, 3))} /></label>
-        <label className="field">札の記号<small className="muted">任意</small><input className="input input--narrow" value={prefix} maxLength={3} placeholder="なし" onChange={(e) => setPrefix(e.target.value.toUpperCase())} /></label>
-      </div>
-      <p className="hint">札は「{ticketLabel(prefix, 5)}」のように表示されます。記号は、札にもともと文字が書いてあるときだけ入れてください（空欄なら番号だけ）。札を使わないお店でも、そのままで大丈夫です（会計のときに「札なし」を選べます）。</p>
-      <label className="field">文化祭の初日<small className="muted">任意。売上が「1日目」「2日目」と表示されます</small>
-        <input className="input input--date" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-      </label>
+      <h2 className="setup-panel__title">番号札</h2>
+      <ol className="tk-flow" aria-label="番号札の使い方">
+        <li><b>会計のとき</b>札を1枚お客さんに渡す</li>
+        <li><b>できたら</b>呼び出し画面にその番号が出る</li>
+        <li><b>受け取るとき</b>札を返してもらって料理を渡す</li>
+      </ol>
+      <TicketFields count={count} setCount={setCount} prefix={prefix} setPrefix={setPrefix} start={start} setStart={setStart} />
+      <p className="hint">札を使わない会計もできます（レジで「札なし」を押します）。どれも、あとで管理画面の「設定」から変えられます。</p>
       <Nav back={back} next={() => void save()} disabled={!count || Number(count) < 1} />
     </section>
   );
@@ -237,11 +226,13 @@ function ShareStep({ st, back, next }: { st: State; back: () => void; next: () =
   return (
     <section className="panel setup-panel">
       <p className="eyebrow">Step 05 / 06</p>
-      <h2 className="setup-panel__title">部員にリンクを配りましょう</h2>
-      <p className="hint">部員用リンクを、部員のグループ（LINE など）に送ってください。部員は自分の端末で一度開くだけで、レジ・厨房が使えるようになります。</p>
-      {st.staffKey && <LinkRow title="部員用リンク" note="レジ・厨房で使う部員に送ります" url={joinLink(id, st.staffKey)} />}
-      {admin && <LinkRow title="管理用リンク（代表者だけ）" note="ほかの端末でも管理したいとき用" url={joinLink(id, admin)} warn="なくすと、ほかの端末から管理できなくなります。スクリーンショットかメモで必ず保存してください。部員全体には配らないでください。" />}
-      <LinkRow title="呼び出し表示" note="店先のモニターで開きます（誰でも見られます）" url={displayLink(id)} />
+      <h2 className="setup-panel__title">リンクを配りましょう</h2>
+      <p className="hint">このアプリは、ログインの代わりに<b>リンク</b>を使います。リンクを一度開いた端末が、その役割の画面を使えるようになります。リンクは3種類あります。</p>
+      <div className="link-rows">
+        {st.staffKey && <LinkRow who="部員みんなへ送る" title="部員用リンク" note="開いた端末で、レジと厨房が使えるようになります。売上や設定は見られません。" url={joinLink(id, st.staffKey)} />}
+        <LinkRow who="店先のモニターで開く" title="呼び出し表示" note="お客さん向けに、できた番号を大きく出す画面です。誰が見ても大丈夫です（注文の中身や売上は出ません）。" url={displayLink(id)} openHere />
+        {admin && <LinkRow who="代表者だけ・送らない" tone="private" title="管理用リンク" note="売上・メニュー・設定を変えられるリンクです。自分の別の端末（スマホなど）で管理したいときに開きます。" url={joinLink(id, admin)} warn="部員のグループには送らないでください。なくすと、ほかの端末から管理できなくなるので、メモやスクリーンショットで保存しておいてください。" />}
+      </div>
       {recovery && <RecoveryCodeBox code={recovery} shopName={st.shop.name} onSaved={setSaved} />}
       <Nav back={back} next={() => { sessionStorage.removeItem(`recovery:${id}`); next(); }} nextLabel={saved ? "保存した・配った" : "復旧コードを保存してください"} disabled={!saved} />
     </section>
