@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ShopPublic } from "../../shared/types";
 import type { ConnStatus } from "../sync";
-import { api, ApiError, buzz } from "../util";
+import { api, ApiError, buzz, loginWithPassword } from "../util";
+import { PasswordInput } from "./PasswordInput";
 import { keyFromText } from "../myshops";
 import { Logo } from "./Logo";
 import { IconAlert, IconCheck, IconClose, IconInfo, IconOffline } from "./icons";
@@ -200,7 +201,7 @@ export function Notices({ notices, onDismiss }: { notices: { id: string; text: s
 
 /** 合言葉・PIN の入力。正しければ端末に保存する。 */
 export function CodeGate({
-  shopId, shop, title, label, minRole, onOk, storageKey, devHint, extra,
+  shopId, shop, title, label, minRole, onOk, storageKey, devHint, extra, password,
 }: {
   shopId: string;
   shop: ShopLook | null;
@@ -211,8 +212,23 @@ export function CodeGate({
   onOk: (code: string) => void;
   devHint?: string;
   extra?: ReactNode;
+  /** 管理用パスワードで入れる店舗か（管理画面の入口だけ） */
+  password?: boolean;
 }) {
   const [code, setCode] = useState("");
+  const [pass, setPass] = useState("");
+  const [useLink, setUseLink] = useState(!password);
+  const passSubmit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      onOk(await loginWithPassword(shopId, pass));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "エラーが起きました");
+    } finally {
+      setBusy(false);
+    }
+  };
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // この端末で初めて開いたときは店舗の色と名前がまだないので、取りに行く
@@ -241,6 +257,25 @@ export function CodeGate({
       setBusy(false);
     }
   };
+  if (password && !useLink) {
+    return (
+      <Page shop={look} className="page--center">
+        <form className="gate" onSubmit={(e) => { e.preventDefault(); void passSubmit(); }}>
+          <ShopBadge shop={look} size="lg" />
+          <div className="gate__shop">{look?.name}</div>
+          <h1 className="gate__title">{title}</h1>
+          <label htmlFor="gate-pass" className="gate__label">管理用パスワード</label>
+          <PasswordInput id="gate-pass" value={pass} onChange={setPass} autoComplete="current-password" autoFocus />
+          {error && <p className="error" role="alert">{error}</p>}
+          <Btn type="submit" variant="accent" big disabled={pass.length < 8 || busy}>{busy ? "確認中…" : "管理画面に入る"}</Btn>
+          <p className="hint">店舗をつくった人が決めたパスワードです。一度入れば、この端末では次から不要です。</p>
+          <button type="button" className="link" onClick={() => { setUseLink(true); setError(""); }}>管理用リンクで入る</button>
+          {import.meta.env.DEV && devHint && <p className="dev-hint">開発用: {devHint}</p>}
+          {extra}
+        </form>
+      </Page>
+    );
+  }
   return (
     <Page shop={look} className="page--center">
       <form

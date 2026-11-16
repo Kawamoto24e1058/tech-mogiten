@@ -99,3 +99,10 @@ export function chime() {
     // 音が出せない環境
   }
 }
+
+/** 管理用パスワードで管理画面に入る。この端末用の管理キーをもらって保存する */
+export async function loginWithPassword(shopId: string, password: string): Promise<string> {
+  const r = await api<{ adminKey: string }>(`/api/shops/${encodeURIComponent(shopId)}/login`, null, { method: "POST", body: JSON.stringify({ password }) });
+  localStorage.setItem(adminKey(shopId), r.adminKey);
+  return r.adminKey;
+}

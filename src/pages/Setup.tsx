@@ -231,10 +231,10 @@ function ShareStep({ st, back, next }: { st: State; back: () => void; next: () =
       <div className="link-rows">
         {st.staffKey && <LinkRow who="部員みんなへ送る" title="部員用リンク" note="開いた端末で、レジと厨房が使えるようになります。売上や設定は見られません。" url={joinLink(id, st.staffKey)} />}
         <LinkRow who="店先のモニターで開く" title="呼び出し表示" note="お客さん向けに、できた番号を大きく出す画面です。誰が見ても大丈夫です（注文の中身や売上は出ません）。" url={displayLink(id)} openHere />
-        {admin && <LinkRow who="代表者だけ・送らない" tone="private" title="管理用リンク" note="売上・メニュー・設定を変えられるリンクです。自分の別の端末（スマホなど）で管理したいときに開きます。" url={joinLink(id, admin)} warn="部員のグループには送らないでください。なくすと、ほかの端末から管理できなくなるので、メモやスクリーンショットで保存しておいてください。" />}
+        {admin && <LinkRow who="代表者だけ・送らない" tone="private" title="管理用リンク" note="売上・メニュー・設定を変えられるリンクです。自分の別の端末（スマホなど）で管理したいときに開きます。" url={joinLink(id, admin)} warn={st.shop.hasPassword ? "部員のグループには送らないでください。なくしても、管理用パスワードで入り直せます。" : "部員のグループには送らないでください。なくすと、ほかの端末から管理できなくなるので、メモやスクリーンショットで保存しておいてください。"} />}
       </div>
       {recovery && <RecoveryCodeBox code={recovery} shopName={st.shop.name} onSaved={setSaved} />}
-      <Nav back={back} next={() => { sessionStorage.removeItem(`recovery:${id}`); next(); }} nextLabel={saved ? "保存した・配った" : "復旧コードを保存してください"} disabled={!saved} />
+      <Nav back={back} next={() => { sessionStorage.removeItem(`recovery:${id}`); next(); }} nextLabel={saved ? "配った・次へ" : "復旧コードを保存してください"} disabled={!saved} />
     </section>
   );
 }

@@ -67,6 +67,37 @@ function parseCost(v: unknown): number | null {
   return n;
 }
 
+// ---------- 管理用パスワード ----------
+// そのままは保存せず、PBKDF2（SHA-256・塩つき）で元に戻せない形にして保存する
+const PASS_ITER = 50_000;
+/** パスワードで試せる回数（店舗ごと・1時間）。接続元ごとの制限（1分10回）とは別に、全体の上限を決める */
+const LOGIN_FAIL_PER_HOUR = 30;
+const hex = (b: ArrayBuffer | Uint8Array) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+async function pbkdf2(password: string, salt: Uint8Array, iter: number): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  return hex(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iter }, key, 256));
+}
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return `pbkdf2$${PASS_ITER}$${hex(salt)}$${await pbkdf2(password, salt, PASS_ITER)}`;
+}
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const [kind, iter, saltHex, hash] = stored.split("$");
+  if (kind !== "pbkdf2" || !saltHex || !hash) return false;
+  const salt = new Uint8Array(saltHex.match(/../g)!.map((h) => parseInt(h, 16)));
+  const got = await pbkdf2(password, salt, Number(iter));
+  // 途中で止めずに最後まで比べる
+  let diff = got.length ^ hash.length;
+  for (let i = 0; i < Math.min(got.length, hash.length); i++) diff |= got.charCodeAt(i) ^ hash.charCodeAt(i);
+  return diff === 0;
+}
+function checkPassword(v: unknown): string {
+  const s = String(v ?? "");
+  if (s.length < 8) throw new HttpError(400, "管理用パスワードは8文字以上にしてください");
+  if (s.length > 64) throw new HttpError(400, "管理用パスワードは64文字までにしてください");
+  return s;
+}
+
 /** 復旧コード: 見間違えにくい文字だけで16文字（4文字ずつ区切る。約80ビット） */
 function recoveryCode(): string {
   const chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -116,6 +147,7 @@ export class ShopDO extends DurableObject<Env> {
         diff INTEGER NOT NULL, denominations TEXT NOT NULL, memo TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS auth_fail (at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS admin_sessions (hash TEXT PRIMARY KEY, at INTEGER NOT NULL);
     `);
     // 後から追加した列
     const menuCols = this.sql.exec<{ name: string }>("PRAGMA table_info(menu)").toArray().map((r) => r.name);
@@ -151,13 +183,15 @@ export class ShopDO extends DurableObject<Env> {
   }
 
   /** 各部が作った店舗の初期設定。管理用・部員用のキー（リンク）を作って返す。キーは推測できない長さにする */
-  private async initShop(id: string, b: { name?: string; organization?: string; color?: string; prefix?: string; ticketCount?: number }) {
+  private async initShop(id: string, b: { name?: string; organization?: string; color?: string; prefix?: string; ticketCount?: number; password?: string }) {
     if (this.get("shopId")) throw new HttpError(409, "この店舗はすでにあります");
     const name = String(b.name ?? "").trim().slice(0, 30);
     if (!name) throw new HttpError(400, "店舗名を入力してください");
     const color = /^#[0-9a-fA-F]{6}$/.test(String(b.color)) ? String(b.color) : "#1565c0";
     const prefix = String(b.prefix ?? "").trim().slice(0, 3); // 空なら番号だけ（札に文字が書いてあるときだけ使う）
     const count = Math.floor(Number(b.ticketCount ?? 30));
+    // 管理用パスワード（画面から作るときは必ず入れる）。ないときは昔と同じく復旧コードを出す
+    const password = b.password != null ? checkPassword(b.password) : null;
     this.set("shopId", id);
     this.set("name", name);
     this.set("organization", String(b.organization ?? "").trim().slice(0, 40) || null);
@@ -166,7 +200,8 @@ export class ShopDO extends DurableObject<Env> {
     this.set("ticketCount", String(count >= 1 && count <= 999 ? count : 30));
     this.set("protected", "1");
     this.set("createdAt", String(Date.now()));
-    const keys = await this.issueKeys(["admin", "staff", "recovery"]);
+    if (password) this.set("passHash", await hashPassword(password));
+    const keys = await this.issueKeys(password ? ["admin", "staff"] : ["admin", "staff", "recovery"]);
     this.audit("create.shop", null, { name });
     await this.touch();
     return keys;
@@ -184,6 +219,8 @@ export class ShopDO extends DurableObject<Env> {
         out.recoveryCode = code;
         continue;
       }
+      // 管理用リンクを作り直したら、パスワードで入った端末も入り直してもらう
+      if (w === "admin") this.sql.exec("DELETE FROM admin_sessions");
       const key = randomKey(w === "admin" ? 24 : 16);
       this.set(w === "admin" ? "adminHash" : "staffHash", await sha256(`${sid}:${key}`));
       if (w === "staff") {
@@ -230,6 +267,7 @@ export class ShopDO extends DurableObject<Env> {
       organization: this.get("organization"),
       configured: this.get("staffHash") != null,
       authRequired: this.authRequired,
+      hasPassword: this.get("passHash") != null,
     };
   }
 
@@ -239,6 +277,7 @@ export class ShopDO extends DurableObject<Env> {
     if (!code) return null;
     const h = await sha256(`${this.get("shopId")}:${code}`);
     if (this.get("adminHash") === h) return "admin";
+    if (this.sql.exec("SELECT 1 FROM admin_sessions WHERE hash = ?", h).toArray().length) return "admin";
     if (this.get("staffHash") === h) return "staff";
     return null;
   }
@@ -612,6 +651,7 @@ export class ShopDO extends DurableObject<Env> {
       shop,
       staffKey: this.authRequired ? this.get("staffKey") : null,
       hasAdminPin: this.get("adminHash") != null,
+      hasPassword: this.get("passHash") != null,
       menu: this.menu(),
       discounts: this.discounts(),
       orders,
@@ -670,6 +710,29 @@ export class ShopDO extends DurableObject<Env> {
 
     if (path === "/ws") return this.handleWebSocket(req, url);
     if (path === "/public" && m === "GET") return json(this.shopPublic());
+    // 管理用パスワードで管理画面に入る。この端末用の管理キーを新しく出す（ほかの代表者の端末はそのまま使える）
+    if (path === "/login" && m === "POST") {
+      const now = Date.now();
+      const ip = req.headers.get("cf-connecting-ip") ?? "local";
+      this.sql.exec("DELETE FROM auth_fail WHERE at < ?", now - AUTH_FAIL_WINDOW_MS);
+      const fails = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM auth_fail WHERE ip = ?", ip).one().n;
+      if (fails >= AUTH_FAIL_LIMIT) throw new HttpError(429, "間違いが続いたため、1分ほど待ってからもう一度ためしてください");
+      const hour = JSON.parse(this.get("loginFails") ?? "null") as { start: number; n: number } | null;
+      const win = hour && now - hour.start < 3600_000 ? hour : { start: now, n: 0 };
+      if (win.n >= LOGIN_FAIL_PER_HOUR) throw new HttpError(429, "間違いが多いため、しばらく（最大1時間）パスワードでは入れません。管理用リンクを持っている人に頼んでください");
+      const stored = this.get("passHash");
+      if (!stored) throw new HttpError(400, "この店舗には管理用パスワードがありません（前につくった店舗は、復旧コードで入れます）");
+      const { password } = await this.body<{ password: string }>(req);
+      if (!(await verifyPassword(String(password ?? ""), stored))) {
+        this.sql.exec("INSERT INTO auth_fail (at, ip) VALUES (?, ?)", now, ip);
+        this.set("loginFails", JSON.stringify({ start: win.start, n: win.n + 1 }));
+        throw new HttpError(401, "パスワードが違います");
+      }
+      const key = randomKey(24);
+      this.sql.exec("INSERT INTO admin_sessions (hash, at) VALUES (?, ?)", await sha256(`${this.get("shopId")}:${key}`), now);
+      this.audit("login", null, {});
+      return json({ adminKey: key, shop: this.shopPublic() });
+    }
     // 管理用リンクをなくしたとき: 復旧コードで新しい管理用リンクを出す。古い管理用リンクと使った復旧コードは使えなくする
     if (path === "/recover" && m === "POST") {
       const now = Date.now();
@@ -754,6 +817,13 @@ export class ShopDO extends DurableObject<Env> {
       });
     }
 
+    if (p === "/password" && m === "PUT") {
+      const { password } = await this.body<{ password: string }>(req);
+      this.set("passHash", await hashPassword(checkPassword(password)));
+      this.set("loginFails", null);
+      this.audit("password", null, {});
+      return json(this.adminState(day));
+    }
     if (p === "/settings" && m === "PUT") {
       const b = await this.body<Partial<{ name: string; color: string; prefix: string; ticketCount: number; festivalStart: string | null }>>(req);
       if (b.festivalStart !== undefined) {

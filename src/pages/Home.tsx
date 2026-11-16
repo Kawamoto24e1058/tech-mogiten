@@ -2,7 +2,6 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { accentStyle } from "../components/ui";
 import { IconNext } from "../components/icons";
 import { SiteHeader } from "../components/SiteHeader";
-import { Logo } from "../components/Logo";
 import { canPromptInstall, isIOS, isStandalone, onInstallChange, promptInstall } from "../install";
 import { forgetShop, myShops, type MyShop } from "../myshops";
 import { adminKey, api, ApiError, codeKey, load } from "../util";
@@ -83,6 +82,7 @@ export function Home() {
               <div className="role-links">
                 <a href={`/${s.id}/display`}>呼び出し表示<small>（店先のモニター用）</small></a>
                 {admin && <a href={`/${s.id}/admin`}>管理<small>（売上・メニュー・共有リンク）</small></a>}
+                {admin && <a className="role-links__danger" href={`/${s.id}/admin#delete`}>店舗を削除…</a>}
                 {!s.open && (
                   <button className="link home-shop__forget" onClick={() => { if (confirm(`「${s.name}」をこの端末から外しますか？（お店のデータは消えません。もう一度使うにはリンクを開き直します）`)) { forgetShop(s.id); setMine(myShops()); } }}>
                     この端末から外す
@@ -104,7 +104,7 @@ export function Home() {
         <InstallCard />
 
         {canAdminAny && entries.length > 1 && <a className="home__master" href="/admin">この端末で管理している店舗の売上をまとめて見る</a>}
-        <p className="home__terms"><a href="/guide">使い方・よくある質問</a>　<a href="/terms">利用規約・プライバシーポリシー</a>　<a href="/recover">管理用リンクをなくした方</a></p>
+        <p className="home__terms"><a href="/guide">使い方・よくある質問</a>　<a href="/terms">利用規約・プライバシーポリシー</a>　<a href="/recover">管理画面に入れなくなった方</a></p>
       </main>
     </div>
   );
@@ -144,34 +144,34 @@ function Start() {
   const [joining, setJoining] = useState(false);
   return (
     <div className="page start-page">
+      <SiteHeader cta={false} />
       <main className="start">
-        <header className="start__hero">
-          <Logo size={64} />
-          <h1 className="start__title">模擬店レジ</h1>
-          <p className="start__lead">文化祭の模擬店のための、かんたん会計アプリ</p>
-        </header>
-
-        <FlowPreview />
-
-        <section className="start__actions" aria-label="はじめかた">
-          <a className="start-btn start-btn--primary" href="/new">
-            <b>店舗をつくる</b>
-            <span>代表者の方</span>
-          </a>
-          <button className="start-btn" onClick={() => setJoining(!joining)} aria-expanded={joining}>
-            <b>リンクを開く</b>
-            <span>部員の方</span>
-          </button>
-        </section>
-        {joining && (
-          <div className="start__join">
-            <p className="hint">代表者から届いた「部員用リンク」をこの端末で開くか、ここに貼り付けてください。</p>
-            <JoinByLink />
+        <section className="start__main">
+          <p className="eyebrow">For school festivals</p>
+          <h1 className="start__title"><span>模擬店の会計を、</span><span>スマホとタブレットで。</span></h1>
+          <p className="start__lead">文化祭の模擬店のための、かんたん会計アプリ。レジ・厨房・呼び出し表示まで、無料・登録なしで使えます。</p>
+          <div className="start__actions" aria-label="はじめかた">
+            <a className="start-btn start-btn--primary" href="/new">
+              <span>代表者の方</span>
+              <b>店舗をつくる</b>
+            </a>
+            <button className="start-btn" onClick={() => setJoining(!joining)} aria-expanded={joining}>
+              <span>部員の方</span>
+              <b>リンクを開く</b>
+            </button>
           </div>
-        )}
-
-        <p className="start__foot"><a href="/guide">使い方・よくある質問</a><span aria-hidden>・</span><a href="/terms">利用規約</a><span aria-hidden>・</span><a href="/recover">管理用リンクをなくした方</a></p>
+          {joining && (
+            <div className="start__join">
+              <p className="hint">代表者から届いた「部員用リンク」をこの端末で開くか、ここに貼り付けてください。</p>
+              <JoinByLink />
+            </div>
+          )}
+        </section>
+        <section className="start__visual" aria-label="使い方の流れ">
+          <FlowPreview />
+        </section>
       </main>
+      <footer className="start__foot"><a href="/guide">使い方・よくある質問</a><span aria-hidden>・</span><a href="/terms">利用規約</a><span aria-hidden>・</span><a href="/recover">管理画面に入れなくなった方</a></footer>
     </div>
   );
 }
@@ -207,7 +207,7 @@ function FlowPreview() {
       <div className="flow__step">
         <div className="flow__card flow__card--ticket" aria-hidden>
           <span className="flow__label">札</span>
-          <span className="flow__ticket">A-5</span>
+          <span className="flow__ticket">5</span>
         </div>
         <figcaption><b>1</b>札を渡す</figcaption>
       </div>
@@ -226,7 +226,7 @@ function FlowPreview() {
       <div className="flow__step">
         <div className="flow__card flow__card--call" aria-hidden>
           <span className="flow__label">お呼び出し</span>
-          <span className="flow__call">A-5</span>
+          <span className="flow__call">5</span>
         </div>
         <figcaption><b>3</b>番号で呼ぶ</figcaption>
       </div>

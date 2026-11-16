@@ -9,6 +9,7 @@ import { adminKey, api, ApiError, codeKey, timeOf, todayJst } from "../util";
 import { LinkRow, RecoveryCodeBox } from "../components/ShareLinks";
 import { DiscountEditor, describeRule } from "../components/DiscountEditor";
 import { TicketFields } from "../components/TicketFields";
+import { PasswordInput } from "../components/PasswordInput";
 import { displayLink, forgetShop, joinLink } from "../myshops";
 
 interface AdminState {
@@ -16,6 +17,7 @@ interface AdminState {
   /** 部員用リンクのキー（リンクで保護している店舗だけ） */
   staffKey: string | null;
   hasAdminPin: boolean;
+  hasPassword: boolean;
   menu: MenuItem[];
   discounts: DiscountRule[];
   orders: Order[];
@@ -44,7 +46,7 @@ const ACTION_JA: Record<string, string> = {
 type Mutate = (path: string, method: string, body?: unknown, msg?: string) => Promise<AdminState | null>;
 
 export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code: string; onAuthError: () => void }) {
-  const [tab, setTab] = useState<Tab>("sales");
+  const [tab, setTab] = useState<Tab>(() => (location.hash === "#delete" || location.hash === "#password" ? "settings" : "sales"));
   const [day, setDay] = useState(todayJst());
   const [st, setSt] = useState<AdminState | null>(null);
   const [sum, setSum] = useState<DaySummary | null>(null);
@@ -141,6 +143,7 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
           <li><a href={`/${shopId}/setup?step=1`}>はじめの設定</a></li>
         </ul>
         <button className="side__refresh" onClick={() => void refresh()}>最新にする</button>
+        <button className="side__danger" onClick={() => { setTab("settings"); setTimeout(() => document.getElementById("delete")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>店舗を完全に削除…</button>
       </aside>
       <main className="admin">
         <header className="admin-head">
@@ -662,6 +665,7 @@ function SettingsTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         <TicketFields count={count} setCount={setCount} prefix={prefix} setPrefix={setPrefix} start={start} setStart={setStart} />
         <Btn type="submit" variant="accent">保存</Btn>
       </form>
+      <PasswordPanel st={st} mutate={mutate} />
       <SharePanel st={st} mutate={mutate} />
       <PrepPanel st={st} mutate={mutate} />
       <BackupPanel st={st} mutate={mutate} />
@@ -717,7 +721,7 @@ function SharePanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
       <div className="link-rows">
         {st.staffKey && <LinkRow who="部員みんなへ送る" title="部員用リンク" note="開いた端末で、レジと厨房が使えるようになります。売上や設定は見られません。" url={joinLink(id, st.staffKey)} />}
         <LinkRow who="店先のモニターで開く" title="呼び出し表示" note="お客さん向けに、できた番号を大きく出す画面です。誰が見ても大丈夫です（注文の中身や売上は出ません）。" url={displayLink(id)} openHere />
-        {myAdminKey && <LinkRow who="代表者だけ・送らない" tone="private" title="管理用リンク" note="売上・メニュー・設定を変えられるリンクです。自分の別の端末（スマホなど）で管理したいときに開きます。" url={joinLink(id, myAdminKey)} warn="部員のグループには送らないでください。なくすと、ほかの端末から管理できなくなるので、メモやスクリーンショットで保存しておいてください。" />}
+        {myAdminKey && <LinkRow who="代表者だけ・送らない" tone="private" title="管理用リンク" note="売上・メニュー・設定を変えられるリンクです。自分の別の端末（スマホなど）で管理したいときに開きます。" url={joinLink(id, myAdminKey)} warn={st.hasPassword ? "部員のグループには送らないでください。なくしても、管理用パスワードで入り直せます。" : "部員のグループには送らないでください。なくすと、ほかの端末から管理できなくなるので、メモやスクリーンショットで保存しておいてください。"} />}
       </div>
       {error && <Banner kind="error">{error}</Banner>}
       <div className="prep-row">
@@ -734,13 +738,13 @@ function SharePanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         </div>
         <Btn variant="danger" onClick={() => setConfirm("admin")}>作り直す</Btn>
       </div>
-      <div className="prep-row">
+      {!st.hasPassword && <div className="prep-row">
         <div>
           <b>復旧コードを作り直す</b>
           <p className="hint">管理用リンクをなくしたときに使うコードです。なくした・忘れたときに作り直します（前のコードは使えなくなります）。</p>
         </div>
         <Btn onClick={() => void run("recovery")}>作り直す</Btn>
-      </div>
+      </div>}
       {newRecovery && (
         <Modal title="新しい復旧コード" onClose={() => setNewRecovery(null)}>
           <RecoveryCodeBox code={newRecovery} shopName={st.shop.name} />
@@ -865,6 +869,40 @@ function BackupPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
 }
 
 /** 店舗そのものを削除する（文化祭が終わった・作り直したいとき）。元に戻せないので店舗名の入力で確認 */
+/** 管理用パスワード。管理用リンクをなくしても、部員用リンクで開いた端末からこれで管理画面に入れる */
+function PasswordPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+  const [pass, setPass] = useState("");
+  const [open, setOpen] = useState(!st.hasPassword);
+  useEffect(() => {
+    if (location.hash === "#password") setTimeout(() => document.getElementById("password")?.scrollIntoView({ block: "center" }), 300);
+  }, []);
+  const save = async () => {
+    if (await mutate("/password", "PUT", { password: pass }, st.hasPassword ? "パスワードを変えました" : "パスワードを決めました")) {
+      setPass("");
+      setOpen(false);
+    }
+  };
+  return (
+    <section className="panel" id="password">
+      <h3 className="panel__title">管理用パスワード</h3>
+      <p className="hint">管理画面に入るときのパスワードです。管理用リンクをなくしても、部員用リンクで開いた端末で「管理」を開き、このパスワードで入れます。部員には教えないでください。</p>
+      {st.hasPassword && !open ? (
+        <div className="row"><span className="tag">✓ 決めてあります</span><Btn variant="ghost" onClick={() => setOpen(true)}>変える</Btn></div>
+      ) : (
+        <form className="pass-form" onSubmit={(e) => { e.preventDefault(); if (pass.length >= 8) void save(); }}>
+          {!st.hasPassword && <Banner kind="warn">まだ決めていません。決めておくと、管理用リンクをなくしても入り直せます。</Banner>}
+          <label className="field" htmlFor="admin-pass">{st.hasPassword ? "新しいパスワード" : "パスワード"}<small className="muted">8文字以上</small></label>
+          <PasswordInput id="admin-pass" value={pass} onChange={setPass} autoComplete="new-password" />
+          <div className="row">
+            <Btn type="submit" variant="accent" disabled={pass.length < 8}>{st.hasPassword ? "変える" : "決める"}</Btn>
+            {st.hasPassword && <Btn variant="ghost" onClick={() => { setOpen(false); setPass(""); }}>やめる</Btn>}
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
 function DeleteShopPanel({ st }: { st: AdminState }) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
@@ -882,14 +920,17 @@ function DeleteShopPanel({ st }: { st: AdminState }) {
       setBusy(false);
     }
   };
+  useEffect(() => {
+    if (location.hash === "#delete") setTimeout(() => document.getElementById("delete")?.scrollIntoView({ block: "center" }), 300);
+  }, []);
   return (
-    <section className="panel">
-      <h3 className="panel__title">店舗を削除</h3>
-      <p className="hint">文化祭が終わったときなどに使います。メニュー・売上・注文・設定がすべて消え、共有リンクも使えなくなります。元に戻せません。</p>
-      <Btn variant="danger" onClick={() => { setConfirm(""); setOpen(true); }}>店舗を削除する</Btn>
+    <section className="panel panel--danger" id="delete">
+      <h3 className="panel__title">店舗を完全に削除</h3>
+      <p className="hint">文化祭が終わったときなどに使います。メニュー・売上・注文・設定が<b>サーバーからすべて消え</b>、部員用リンク・管理用リンクも使えなくなります。元に戻せません。</p>
+      <Btn variant="danger" onClick={() => { setConfirm(""); setOpen(true); }}>店舗を完全に削除する</Btn>
       {open && (
         <Modal title="店舗を削除しますか？" onClose={() => setOpen(false)}>
-          <Banner kind="error">「{st.shop.name}」のデータがすべて消え、元に戻せません。売上を残すなら、先に「売上」タブで日ごとのCSVを書き出してください。</Banner>
+          <Banner kind="error">「{st.shop.name}」のデータがサーバーからすべて消え、元に戻せません。部員の端末でも開けなくなります。売上を残すなら、先に「売上」タブで日ごとのCSVか日報を保存してください。</Banner>
           <label className="field">確認のため、店舗名「{st.shop.name}」を入力してください
             <input className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
           </label>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ShopPublic } from "../../shared/types";
 import { AppBar, Banner, Btn, Page } from "../components/ui";
+import { PasswordInput } from "../components/PasswordInput";
 import { rememberShop } from "../myshops";
 import { SetupSteps } from "./Setup";
 import { adminKey, api, codeKey } from "../util";
@@ -16,12 +17,13 @@ export function CreateShop() {
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0].hex);
   const [count, setCount] = useState("30");
+  const [password, setPassword] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const look = { name: name || "新しい店舗", color, prefix: "" };
   const colorName = COLORS.find((c) => c.hex === color)?.name ?? "";
-  const missing = [!name.trim() && "お店の名前", !agree && "利用規約への同意"].filter(Boolean).join("と");
+  const missing = [!name.trim() && "お店の名前", password.length < 8 && "8文字以上の管理用パスワード", !agree && "利用規約への同意"].filter(Boolean).join("・");
   const n = Number(count || 0);
   const step = (d: number) => setCount(String(Math.min(999, Math.max(1, (n || 30) + d))));
 
@@ -31,13 +33,11 @@ export function CreateShop() {
     try {
       const r = await api<{ id: string; adminKey: string; staffKey: string; recoveryCode?: string }>("/api/shops", null, {
         method: "POST",
-        body: JSON.stringify({ name, color, prefix: "", ticketCount: Number(count || 30) }),
+        body: JSON.stringify({ name, password, color, prefix: "", ticketCount: Number(count || 30) }),
       });
       // 作った端末では、管理も部員の画面もすぐ使えるようにしておく
       localStorage.setItem(adminKey(r.id), r.adminKey);
       localStorage.setItem(codeKey(r.id), r.staffKey);
-      // 復旧コードは「部員に共有」の手順で1回だけ見せる（この端末のこのタブの中だけに置く）
-      if (r.recoveryCode) sessionStorage.setItem(`recovery:${r.id}`, r.recoveryCode);
       const shop = await api<ShopPublic>(`/api/shops/${r.id}/public`, null);
       rememberShop(shop);
       // 続けて、商品・割引・札・共有を1つずつ設定する
@@ -55,10 +55,10 @@ export function CreateShop() {
       <main className="admin setup setup--create">
         <SetupSteps step={0} />
         <div className="create">
-          <form className="panel setup-panel" onSubmit={(e) => { e.preventDefault(); if (name.trim() && agree) void submit(); }}>
+          <form className="panel setup-panel" onSubmit={(e) => { e.preventDefault(); if (name.trim() && agree && password.length >= 8) void submit(); }}>
             <p className="eyebrow">Step 01 / 06</p>
             <h2 className="setup-panel__title">お店をつくる</h2>
-            <p className="hint">3つ入れるだけで始められます。どれも、あとから変えられます。</p>
+            <p className="hint">4つ入れるだけで始められます。どれも、あとから変えられます。</p>
             <div className="qs">
               <div className="q">
                 <div className="q__head">
@@ -97,13 +97,23 @@ export function CreateShop() {
                   <span className="count-stepper__unit">枚</span>
                 </div>
               </div>
+              <div className="q">
+                <div className="q__head">
+                  <span className="q__no" aria-hidden>4</span>
+                  <label className="q__label" htmlFor="shop-pass">管理用パスワード</label>
+                  <span className="q__tag q__tag--req">必須</span>
+                </div>
+                <p className="q__help" id="shop-pass-help">売上・メニュー・設定を変える「管理画面」に入るときに使います。<b>メモや保存はいりません。覚えておくだけ</b>で、管理用リンクをなくしても、部員用リンクで開いた端末からこのパスワードで入れます。部員には教えないでください。</p>
+                <PasswordInput id="shop-pass" value={password} onChange={setPassword} autoComplete="new-password" placeholder="8文字以上" describedBy="shop-pass-help" />
+                <p className={`q__count ${password.length >= 8 ? "is-ok" : ""}`} aria-live="polite">{password.length >= 8 ? "✓ 8文字以上" : `あと${8 - password.length}文字`}</p>
+              </div>
             </div>
             <label className="check">
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
               <span><a href="/terms" target="_blank" rel="noreferrer">利用規約・プライバシーポリシー</a>に同意します（個人情報は入力しない・最後に使ってから180日で自動削除 など）。</span>
             </label>
             {error && <Banner kind="error">{error}</Banner>}
-            <Btn type="submit" variant="accent" big disabled={!name.trim() || !agree || busy || n < 1}>{busy ? "作っています…" : "店舗をつくる"}</Btn>
+            <Btn type="submit" variant="accent" big disabled={!name.trim() || !agree || busy || n < 1 || password.length < 8}>{busy ? "作っています…" : "店舗をつくる"}</Btn>
             {missing && !busy && <p className="hint create__missing">{missing}が必要です</p>}
           </form>
           <Preview name={name} />

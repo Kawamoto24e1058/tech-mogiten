@@ -104,7 +104,8 @@ function AdminScreen({ shop, mode }: { shop: ShopPublic; mode?: "setup" | "repor
         storageKey={adminKey(shop.id)}
         onOk={setCode}
         devHint="デモの店舗は 9999"
-        extra={<a className="gate__home" href="/recover">管理用リンクをなくしたとき</a>}
+        password={shop.hasPassword}
+        extra={!shop.hasPassword && <a className="gate__home" href="/recover">管理用リンクをなくしたとき</a>}
       />
     );
   }

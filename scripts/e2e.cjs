@@ -1,5 +1,5 @@
 // 使い方: npm run dev を起動した状態で  npm run e2e   （Playwright と Chromium が必要。本番には使わない）
-// 通しの動作確認: 店舗をつくる → 設定 → 部員の端末 → レジ → 厨房 → 呼び出し → 売上 → 締め → 削除・復元 → 復旧 → 店舗削除
+// 通しの動作確認: 店舗をつくる → 設定 → 部員の端末 → レジ → 厨房 → 呼び出し → 売上 → 締め → 削除・復元 → パスワードで入る → 店舗削除（画面から）
 const { chromium } = require("playwright");
 const BASE = process.argv[2] ?? "http://localhost:5173";
 const proxy = process.env.HTTPS_PROXY && BASE.startsWith("https") ? { server: process.env.HTTPS_PROXY } : undefined;
@@ -27,7 +27,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     p.on("dialog", (d) => d.accept());
     return { ctx, p };
   };
-  let id, adminKey, staffKey, recovery;
+  const PASS = "e2e-pass-1234";
+  let id, adminKey, staffKey, deletedByUi = false;
   try {
     // ---------- 1. 店舗をつくる ----------
     const A = await mk();
@@ -35,8 +36,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await A.p.fill("#shop-name", "E2E確認部");
     await A.p.click('button[aria-label="オレンジ"]');
     await A.p.fill("#shop-count", "10");
-    check(await A.p.locator("button[type=submit]").isDisabled(), "同意しないと店舗をつくれない");
     await A.p.check(".check input");
+    await A.p.fill("#shop-pass", "short");
+    check(await A.p.locator("button[type=submit]").isDisabled(), "管理用パスワードが8文字未満だと店舗をつくれない");
+    await A.p.fill("#shop-pass", PASS);
     await A.p.click("button[type=submit]");
     await A.p.waitForURL(/\/setup\?step=1/, { timeout: 15000 });
     id = new URL(A.p.url()).pathname.split("/")[1];
@@ -68,10 +71,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const staffUrl = await A.p.evaluate(() => [...document.querySelectorAll("input, .link-row__url")].map((e) => e.value || e.textContent).find((t) => t && t.includes("/join#k=") && !t.includes(localStorage.getItem("admin:" + location.pathname.split("/")[1]))));
     staffKey = staffUrl ? new URL(staffUrl).hash.replace("#k=", "") : null;
     check(!!staffKey && staffKey !== adminKey, "部員用リンクが出ていて、管理用とは別のキー");
-    recovery = await A.p.locator(".recovery__code").textContent().catch(() => null);
-    check(!!recovery && /[A-Z0-9]{4}-/.test(recovery), "復旧コードが表示される");
-    check(await A.p.locator(".setup-nav .btn--accent").isDisabled(), "復旧コードを保存したと答えるまで先へ進めない");
-    await A.p.check(".recovery .check input, .check input >> nth=-1");
+    check(await A.p.locator(".recovery__code").count() === 0, "復旧コードの保存はいらない（パスワードがあるので）");
+    check(!(await A.p.locator(".setup-nav .btn--accent").isDisabled()), "保存の確認なしで次へ進める");
     await A.p.click(".setup-nav .btn--accent");
     await A.p.locator("text=準備ができました").waitFor();
     check(true, "はじめの設定を最後まで進められた");
@@ -171,18 +172,44 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await api(`/api/shops/${o2.data.id}/admin/shop/delete`, o2.data.adminKey, { method: "POST", body: JSON.stringify({ confirm: "E2E別店" }) });
     } else check(false, "2つ目の店舗を作れない: " + o2.status);
 
-    // ---------- 11. 復旧コード ----------
-    const rec = await api(`/api/shops/${id}/recover`, null, { method: "POST", body: JSON.stringify({ code: recovery.toLowerCase().replace(/-/g, " ") }) });
-    check(rec.status === 200 && rec.data.adminKey, "復旧コードで新しい管理キーが出る");
-    check((await api(`/api/shops/${id}/admin/state`, adminKey)).status === 401, "古い管理キーは使えなくなる");
-    adminKey = rec.data.adminKey;
-    check((await api(`/api/shops/${id}/admin/state`, adminKey)).status === 200, "新しい管理キーで管理できる");
-    check((await api(`/api/shops/${id}/recover`, null, { method: "POST", body: JSON.stringify({ code: recovery }) })).status >= 400, "同じ復旧コードは2回使えない");
+    // ---------- 11. 管理用パスワード ----------
+    check((await api(`/api/shops/${id}/public`)).data.hasPassword === true, "公開情報: パスワードあり（中身は出ない）");
+    check((await api(`/api/shops/${id}/login`, null, { method: "POST", body: JSON.stringify({ password: "wrong-pass-0000" }) })).status === 401, "違うパスワードでは入れない");
+    // 部員の端末（部員用リンクだけ）で「管理」を開き、パスワードで入る
+    await S.p.goto(`${BASE}/${id}/admin`);
+    await S.p.locator("#gate-pass").waitFor({ timeout: 8000 });
+    await S.p.fill("#gate-pass", PASS);
+    await S.p.click("text=管理画面に入る");
+    await S.p.locator(".admin-head__title").waitFor({ timeout: 8000 });
+    const sKey = await S.p.evaluate((id) => localStorage.getItem("admin:" + id), id);
+    check(!!sKey && sKey !== adminKey, "部員の端末でパスワードを入れると管理画面に入れる");
+    check((await api(`/api/shops/${id}/admin/state`, adminKey)).status === 200, "ほかの代表者の端末（最初の管理キー）はそのまま使える");
+    check((await api(`/api/shops/${id}/admin/state`, staffKey)).status === 403, "部員用キーは管理キーにならない");
+    // 管理用リンクを作り直すと、パスワードで入った端末も入り直し
+    const rot = await api(`/api/shops/${id}/admin/keys`, adminKey, { method: "POST", body: JSON.stringify({ rotate: "admin" }) });
+    check(rot.status === 200 && (await api(`/api/shops/${id}/admin/state`, sKey)).status === 401, "管理用リンクを作り直すと、パスワードで入った端末も入り直しになる");
+    adminKey = rot.data.adminKey;
+    // パスワードを変える
+    await api(`/api/shops/${id}/admin/password`, adminKey, { method: "PUT", body: JSON.stringify({ password: "new-pass-5678" }) });
+    check((await api(`/api/shops/${id}/login`, null, { method: "POST", body: JSON.stringify({ password: PASS }) })).status === 401
+      && (await api(`/api/shops/${id}/login`, null, { method: "POST", body: JSON.stringify({ password: "new-pass-5678" }) })).status === 200, "パスワードを変えると、前のパスワードでは入れない");
+
+    // ---------- 12. 画面から店舗を完全に削除 ----------
+    await A.p.evaluate(([id, k]) => localStorage.setItem("admin:" + id, k), [id, adminKey]);
+    await A.p.goto(`${BASE}/${id}/admin#delete`);
+    await A.p.locator("#delete").waitFor({ timeout: 8000 });
+    await A.p.click("text=店舗を完全に削除する");
+    await A.p.fill(".modal input", "E2E確認部");
+    await A.p.click(".modal >> text=削除する");
+    await A.p.waitForURL((u) => new URL(u).pathname === "/", { timeout: 10000 });
+    deletedByUi = true;
+    check((await api(`/api/shops/${id}/public`)).status === 404, "画面から店舗を完全に削除できる（もう開けない）");
+    check((await api(`/api/shops/${id}/login`, null, { method: "POST", body: JSON.stringify({ password: "new-pass-5678" }) })).status === 404, "削除した店舗にはパスワードでも入れない");
   } catch (e) {
     check(false, "途中で止まった: " + e.message.split("\n")[0]);
   } finally {
     // ---------- 12. 店舗の削除 ----------
-    if (id && adminKey) {
+    if (id && adminKey && !deletedByUi) {
       const name = (await api(`/api/shops/${id}/public`)).data?.name;
       const del = await api(`/api/shops/${id}/admin/shop/delete`, adminKey, { method: "POST", body: JSON.stringify({ confirm: name }) });
       check(del.status === 200, "店舗を削除できる");
