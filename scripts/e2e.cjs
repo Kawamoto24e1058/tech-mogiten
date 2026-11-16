@@ -91,7 +91,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await S.p.waitForTimeout(2500);
     check(!(await S.p.url()).includes("#k="), "開いたあと、キーがアドレス欄から消える");
     await S.p.goto(`${BASE}/${id}/register`);
-    await S.p.locator('.tk-grid--pick button[aria-label^="1"]').first().click();
+    await S.p.locator('.ticket-panel .tk-grid button[aria-label^="1"]').first().click();
     await S.p.locator('.menu-card__main[aria-label^="焼き鳥"]').click();
     await S.p.locator('.menu-card__main[aria-label^="焼き鳥"]').click();
     await S.p.locator('.menu-card__main[aria-label^="焼き鳥"]').click();

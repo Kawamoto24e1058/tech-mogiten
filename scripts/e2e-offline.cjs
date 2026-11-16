@@ -12,10 +12,10 @@ let ng = 0; const check = (c, m) => { console.log(`${c ? "OK  " : "NG  "} ${m}`)
   const ctx = await b.newContext({ viewport: { width: 1280, height: 800 } });
   await ctx.addInitScript(([id, k]) => localStorage.setItem("code:" + id, k), [id, staffKey]);
   const p = await ctx.newPage(); const errs = []; p.on("pageerror", (e) => errs.push(e.message));
-  await p.goto(`${BASE}/${id}/register`); await p.locator(".tk-grid--pick button").first().waitFor();
+  await p.goto(`${BASE}/${id}/register`); await p.locator(".ticket-panel .tk-grid button").first().waitFor();
   await ctx.setOffline(true);
   await p.waitForTimeout(1500);
-  await p.locator('.tk-grid--pick button[aria-label^="2"]').click();
+  await p.locator('.ticket-panel .tk-grid button[aria-label^="2"]').click();
   await p.locator('.menu-card__main[aria-label^="たこ焼き"]').click();
   await p.keyboard.type("500"); await p.keyboard.press("Enter");
   await p.locator(".done__change").waitFor({ timeout: 8000 });

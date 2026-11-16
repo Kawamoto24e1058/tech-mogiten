@@ -98,8 +98,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   };
 
   const ticketOk = ticketChoice !== null;
-  /** お客さんごとに、まず札を選ぶ画面を出す。選んだら注文の画面へ */
-  const choosingTicket = ticketChoice === null;
+  // 札を選ぶだけの画面は出さない（広い画面は左、スマホは上で選ぶ）。選び忘れたら「会計を確定」が押せないので気づける
   const canConfirm = lines.length > 0 && total >= 0 && received !== "" && receivedNum >= total && ticketOk;
 
   /** 会計を確定する */
@@ -122,7 +121,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   // PC ではキーボードの数字・Backspace・Enter でも入力できるようにする
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keyRef.current = (e) => {
-    if (done || choosingTicket || reuseTicket != null || confirmClear || historyOpen || (!wide && step !== "pay")) return;
+    if (done || reuseTicket != null || confirmClear || historyOpen || (!wide && step !== "pay")) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (/^[0-9]$/.test(e.key)) typeKey(e.key);
     else if (e.key === "Backspace") setReceived((r) => r.slice(0, -1));
@@ -299,26 +298,12 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     </button>
   );
 
-  /** ① 札を選ぶ画面（お客さんごとに最初に出る） */
-  const ticketPick = (
-    <main className="ticket-pick">
-      <div className="ticket-pick__head">
-        <h1 className="ticket-pick__title"><span className="step__no">1</span>渡す札の番号を押してください</h1>
-        <p className="hint">箱から札を1枚取って、その番号を押します（順番は自由）。押すと注文の画面に進みます。</p>
-      </div>
-      <div className="tk-grid tk-grid--pick" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
-      <div className="ticket-pick__foot">
-        {noTicketButton}
-      </div>
-    </main>
-  );
-
   /** ① 札（左）。選んだ札を大きく出し、一覧からそのまま押し直せる */
   const ticketPanel = (
     <section className="ticket-panel" aria-label="番号札">
       <h2 className="step-title"><span className="step__no">1</span>渡す札</h2>
       <div className={`ticket-panel__num ${ticket == null ? "is-none" : ""}`} aria-live="polite">{ticketText}</div>
-      <p className="ticket-panel__free">間違えたら、別の番号を押す</p>
+      <p className="ticket-panel__free">{ticket == null && ticketChoice !== "none" ? "↓ 渡す札の番号を押してください" : "間違えたら、別の番号を押す"}</p>
       <div className="tk-grid" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
       {noTicketButton}
     </section>
@@ -349,6 +334,12 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         ))}
         <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す"><IconBackspace size={24} /></button>
       </div>
+      {!wide && !ticketOk && (
+        <div className="ticket-bar ticket-bar--warn">
+          <span className="ticket-bar__label">渡す札を押してください</span>
+          <div className="tk-strip" role="group" aria-label="札の番号">{ticketButtons}{noTicketButton}</div>
+        </div>
+      )}
       <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
         {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "① 札を押してください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : `札 ${ticketText} で会計を確定`}
       </Btn>
@@ -382,18 +373,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       </div>
     </Modal>
   );
-
-  if (choosingTicket) {
-    return (
-      <Page shop={shop} className="page--work">
-        {appbar}
-        {banners}
-        {ticketPick}
-        {reuseModal}
-        {historyModal}
-      </Page>
-    );
-  }
 
   if (wide) {
     return (

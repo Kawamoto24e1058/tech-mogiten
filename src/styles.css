@@ -1729,3 +1729,6 @@ a.appbar__home:hover { background: #f2f2f3; }
 .side__danger:hover { background: var(--danger-soft); }
 .role-links a.role-links__danger { color: var(--danger); }
 .panel--danger .panel__title { color: var(--danger); }
+.ticket-bar--warn { flex-wrap: wrap; border-color: var(--warn-text); background: var(--warn-soft); box-shadow: none; }
+.ticket-bar--warn .ticket-bar__label { color: var(--warn-text); font-weight: 700; }
+.ticket-panel__num.is-none { font-size: 1.1rem; }
