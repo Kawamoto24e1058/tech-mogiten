@@ -594,56 +594,63 @@ function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
   setInfo: (s: string) => void;
   onCsv: () => void;
 }) {
-  const [float, setFloat] = useState(String(sum.floatCash || ""));
+  // 「最初にレジに入れたお金」と「今レジにあるお金」を同じ画面で入れ、記録するときに両方を保存する
+  const [float, setFloat] = useState(sum.floatCash ? String(sum.floatCash) : "");
   const [den, setDen] = useState<Record<string, string>>(() =>
     Object.fromEntries(DENOMINATIONS.map((d) => [d, sum.closing ? String(sum.closing.denominations[d] || "") : ""])),
   );
   const [memo, setMemo] = useState(sum.closing?.memo ?? "");
-  // 基本は「レジの中の合計金額」を入れるだけ。枚数で数えたいときだけ枚数の表を使う
   const usedDen = !!sum.closing && Object.values(sum.closing.denominations ?? {}).some((n) => n > 0);
   const [byCount, setByCount] = useState(usedDen);
   const [total, setTotal] = useState(sum.closing && !usedDen ? String(sum.closing.counted) : "");
   const denTotal = DENOMINATIONS.reduce((s, d) => s + d * Number(den[d] || 0), 0);
   const counted = byCount ? denTotal : Number(total || 0);
   const entered = byCount ? DENOMINATIONS.some((d) => den[d] !== "") : total !== "";
-  const diff = counted - sum.expectedCash;
-  const stale = sum.closing && sum.closing.expected !== sum.expectedCash;
+  const floatNum = Number(float || 0);
+  const unsettled = sum.delivery?.unsettled ?? 0;
+  const cashSales = sum.sales - unsettled; // レジに入っているはずの売上（配達係からまだ受け取っていない分を除く）
+  const expected = floatNum + cashSales;
+  const diff = counted - expected;
+  const stale = sum.closing && (sum.closing.expected !== sum.expectedCash || floatNum !== sum.floatCash);
+
+  const record = async () => {
+    if (floatNum !== sum.floatCash) {
+      const f = await call<DaySummary>("/float", { method: "PUT", body: JSON.stringify({ amount: floatNum }) });
+      if (!f) return;
+    }
+    const s = await call<DaySummary>("/closing", { method: "POST", body: JSON.stringify(byCount ? { denominations: Object.fromEntries(DENOMINATIONS.map((d) => [d, Number(den[d] || 0)])), memo } : { counted, memo }) });
+    if (s) { setSum(s); setInfo("レジ締めを記録しました"); }
+  };
 
   return (
     <>
       <section className="panel step">
-        <h3 className="panel__title"><span className="step__no">1</span>開店時：釣り銭準備金</h3>
-        <p className="hint">開店前にレジに入れたお金です。</p>
-        <div className="row">
-          <span className="input-unit"><input className="input" inputMode="numeric" value={float} onChange={(e) => setFloat(e.target.value.replace(/\D/g, ""))} aria-label="釣り銭準備金" />円</span>
-          <Btn onClick={async () => {
-            const s = await call<DaySummary>("/float", { method: "PUT", body: JSON.stringify({ amount: Number(float || 0) }) });
-            if (s) { setSum(s); setInfo("釣り銭準備金を保存しました"); }
-          }}>保存</Btn>
-        </div>
+        <h3 className="panel__title"><span className="step__no">1</span>最初にレジに入れたお金</h3>
+        <p className="hint">開店前に、お釣り用としてレジに入れておいたお金です。入れていなければ 0 のままで大丈夫です。</p>
+        <span className="input-unit close-total"><input className="input" inputMode="numeric" value={float} onChange={(e) => setFloat(e.target.value.replace(/\D/g, "").slice(0, 8))} aria-label="最初にレジに入れたお金" placeholder="0" />円</span>
       </section>
 
       <section className="panel step">
-        <h3 className="panel__title"><span className="step__no">2</span>閉店後：レジの中のお金</h3>
+        <h3 className="panel__title"><span className="step__no">2</span>今レジの中にあるお金</h3>
         {!byCount ? (
           <>
-            <p className="hint">レジの中のお金（釣り銭準備金も含めて全部）を数えて、合計金額を入れてください。</p>
-            <span className="input-unit close-total"><input className="input" inputMode="numeric" value={total} onChange={(e) => setTotal(e.target.value.replace(/\D/g, "").slice(0, 9))} aria-label="レジの中の合計金額" placeholder="0" />円</span>
+            <p className="hint">閉店後、レジの中のお金を<b>全部</b>（1 で入れたお金も含めて）数えて、合計を入れてください。</p>
+            <span className="input-unit close-total"><input className="input" inputMode="numeric" value={total} onChange={(e) => setTotal(e.target.value.replace(/\D/g, "").slice(0, 9))} aria-label="今レジの中にあるお金" placeholder="0" />円</span>
             <button className="link" onClick={() => setByCount(true)}>枚数で数える（硬貨・お札ごとに入れると、合計を自動で計算）</button>
           </>
         ) : (
           <>
-        <div className="den-grid">
-          {DENOMINATIONS.map((d) => (
-            <label key={d} className="den">
-              <span className="den__name">{d.toLocaleString()}円</span>
-              <input className="input" inputMode="numeric" value={den[d]} onChange={(e) => setDen({ ...den, [d]: e.target.value.replace(/\D/g, "") })} aria-label={`${d}円の枚数`} />
-              <span className="den__unit">枚</span>
-            </label>
-          ))}
-        </div>
-        <p className="hint">枚数から計算した合計: <b>{yen(denTotal)}</b></p>
-        <button className="link" onClick={() => { setByCount(false); setTotal(denTotal ? String(denTotal) : total); }}>合計金額だけを入れる</button>
+            <div className="den-grid">
+              {DENOMINATIONS.map((d) => (
+                <label key={d} className="den">
+                  <span className="den__name">{d.toLocaleString()}円</span>
+                  <input className="input" inputMode="numeric" value={den[d]} onChange={(e) => setDen({ ...den, [d]: e.target.value.replace(/\D/g, "") })} aria-label={`${d}円の枚数`} />
+                  <span className="den__unit">枚</span>
+                </label>
+              ))}
+            </div>
+            <p className="hint">枚数から計算した合計: <b>{yen(denTotal)}</b></p>
+            <button className="link" onClick={() => { setByCount(false); setTotal(denTotal ? String(denTotal) : total); }}>合計金額だけを入れる</button>
           </>
         )}
       </section>
@@ -651,20 +658,20 @@ function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
       <section className="panel step">
         <h3 className="panel__title"><span className="step__no">3</span>確認して記録</h3>
         <dl className="result">
-          <div><dt>数えた現金</dt><dd>{yen(counted)}</dd></div>
-          <div><dt>あるはずの現金</dt><dd>{yen(sum.expectedCash)}</dd></div>
+          <div><dt>最初に入れたお金</dt><dd>{yen(floatNum)}</dd></div>
+          <div><dt>＋ 今日の売上{unsettled > 0 ? "（配達係から未精算の分を除く）" : ""}</dt><dd>{yen(cashSales)}</dd></div>
+          <div className="result__sum"><dt>＝ あるはずのお金</dt><dd>{yen(expected)}</dd></div>
+          <div><dt>今レジにあるお金</dt><dd>{entered ? yen(counted) : "—"}</dd></div>
         </dl>
+        {unsettled > 0 && <Banner kind="warn">配達係からまだ受け取っていないお金が {yen(unsettled)} あります。受け取ってレジに入れたら、配達係の画面で「レジに渡した」を押してから締めてください。</Banner>}
         {entered ? (
           <div className={`diff ${diff === 0 ? "is-ok" : "is-ng"}`}>
             {diff === 0 ? "✓ ぴったりです" : `${diff > 0 ? "多い" : "足りない"}：${yen(Math.abs(diff))}`}
           </div>
-        ) : <p className="hint">2 でレジの中のお金を入れると、あるはずの現金と比べます。</p>}
+        ) : <p className="hint">2 で今レジにあるお金を入れると、あるはずのお金と比べます。</p>}
         <label className="field">メモ<input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="締めた人の名前、差額の理由など" /></label>
-        {stale && <Banner kind="warn">記録した後に売上が変わっています。もう一度記録してください。</Banner>}
-        <Btn variant="accent" big onClick={async () => {
-          const s = await call<DaySummary>("/closing", { method: "POST", body: JSON.stringify(byCount ? { denominations: Object.fromEntries(DENOMINATIONS.map((d) => [d, Number(den[d] || 0)])), memo } : { counted, memo }) });
-          if (s) { setSum(s); setInfo("レジ締めを記録しました"); }
-        }} disabled={!entered}>レジ締めを記録する</Btn>
+        {stale && <Banner kind="warn">記録した後に売上か最初のお金が変わっています。もう一度記録してください。</Banner>}
+        <Btn variant="accent" big onClick={() => void record()} disabled={!entered}>レジ締めを記録する</Btn>
         {sum.closing && !stale && <p className="hint">{timeOf(sum.closing.at)} に記録済み。CSVも保存しておきましょう。 <button className="link" onClick={onCsv}>CSVで書き出す</button></p>}
       </section>
     </>
