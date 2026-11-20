@@ -1210,14 +1210,20 @@ export class ShopDO extends DurableObject<Env> {
       return json(this.daySummary(day));
     }
     if (p === "/closing" && m === "POST") {
-      const b = await this.body<{ denominations: Record<string, number>; memo?: string }>(req);
+      // 合計金額だけ（counted）でも、枚数ごと（denominations）でも記録できる
+      const b = await this.body<{ denominations?: Record<string, number>; counted?: number; memo?: string }>(req);
       const den: Record<string, number> = {};
       let counted = 0;
-      for (const d of DENOMINATIONS) {
-        const n = Math.floor(Number(b.denominations?.[d] ?? 0));
-        if (!(n >= 0 && n <= 100000)) throw new HttpError(400, "枚数が不正です");
-        den[d] = n;
-        counted += d * n;
+      if (b.counted != null && !b.denominations) {
+        counted = Math.floor(Number(b.counted));
+        if (!(counted >= 0 && counted <= 100_000_000)) throw new HttpError(400, "金額が不正です");
+      } else {
+        for (const d of DENOMINATIONS) {
+          const n = Math.floor(Number(b.denominations?.[d] ?? 0));
+          if (!(n >= 0 && n <= 100000)) throw new HttpError(400, "枚数が不正です");
+          den[d] = n;
+          counted += d * n;
+        }
       }
       const s = this.daySummary(day);
       const memo = String(b.memo ?? "").slice(0, 500);

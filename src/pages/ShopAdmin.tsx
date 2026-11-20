@@ -599,7 +599,13 @@ function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
     Object.fromEntries(DENOMINATIONS.map((d) => [d, sum.closing ? String(sum.closing.denominations[d] || "") : ""])),
   );
   const [memo, setMemo] = useState(sum.closing?.memo ?? "");
-  const counted = DENOMINATIONS.reduce((s, d) => s + d * Number(den[d] || 0), 0);
+  // 基本は「レジの中の合計金額」を入れるだけ。枚数で数えたいときだけ枚数の表を使う
+  const usedDen = !!sum.closing && Object.values(sum.closing.denominations ?? {}).some((n) => n > 0);
+  const [byCount, setByCount] = useState(usedDen);
+  const [total, setTotal] = useState(sum.closing && !usedDen ? String(sum.closing.counted) : "");
+  const denTotal = DENOMINATIONS.reduce((s, d) => s + d * Number(den[d] || 0), 0);
+  const counted = byCount ? denTotal : Number(total || 0);
+  const entered = byCount ? DENOMINATIONS.some((d) => den[d] !== "") : total !== "";
   const diff = counted - sum.expectedCash;
   const stale = sum.closing && sum.closing.expected !== sum.expectedCash;
 
@@ -618,7 +624,15 @@ function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
       </section>
 
       <section className="panel step">
-        <h3 className="panel__title"><span className="step__no">2</span>閉店後：現金を数える</h3>
+        <h3 className="panel__title"><span className="step__no">2</span>閉店後：レジの中のお金</h3>
+        {!byCount ? (
+          <>
+            <p className="hint">レジの中のお金（釣り銭準備金も含めて全部）を数えて、合計金額を入れてください。</p>
+            <span className="input-unit close-total"><input className="input" inputMode="numeric" value={total} onChange={(e) => setTotal(e.target.value.replace(/\D/g, "").slice(0, 9))} aria-label="レジの中の合計金額" placeholder="0" />円</span>
+            <button className="link" onClick={() => setByCount(true)}>枚数で数える（硬貨・お札ごとに入れると、合計を自動で計算）</button>
+          </>
+        ) : (
+          <>
         <div className="den-grid">
           {DENOMINATIONS.map((d) => (
             <label key={d} className="den">
@@ -628,6 +642,10 @@ function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
             </label>
           ))}
         </div>
+        <p className="hint">枚数から計算した合計: <b>{yen(denTotal)}</b></p>
+        <button className="link" onClick={() => { setByCount(false); setTotal(denTotal ? String(denTotal) : total); }}>合計金額だけを入れる</button>
+          </>
+        )}
       </section>
 
       <section className="panel step">
@@ -636,15 +654,17 @@ function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
           <div><dt>数えた現金</dt><dd>{yen(counted)}</dd></div>
           <div><dt>あるはずの現金</dt><dd>{yen(sum.expectedCash)}</dd></div>
         </dl>
-        <div className={`diff ${diff === 0 ? "is-ok" : "is-ng"}`}>
-          {diff === 0 ? "✓ ぴったりです" : `${diff > 0 ? "多い" : "足りない"}：${yen(Math.abs(diff))}`}
-        </div>
+        {entered ? (
+          <div className={`diff ${diff === 0 ? "is-ok" : "is-ng"}`}>
+            {diff === 0 ? "✓ ぴったりです" : `${diff > 0 ? "多い" : "足りない"}：${yen(Math.abs(diff))}`}
+          </div>
+        ) : <p className="hint">2 でレジの中のお金を入れると、あるはずの現金と比べます。</p>}
         <label className="field">メモ<input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="締めた人の名前、差額の理由など" /></label>
         {stale && <Banner kind="warn">記録した後に売上が変わっています。もう一度記録してください。</Banner>}
         <Btn variant="accent" big onClick={async () => {
-          const s = await call<DaySummary>("/closing", { method: "POST", body: JSON.stringify({ denominations: Object.fromEntries(DENOMINATIONS.map((d) => [d, Number(den[d] || 0)])), memo }) });
+          const s = await call<DaySummary>("/closing", { method: "POST", body: JSON.stringify(byCount ? { denominations: Object.fromEntries(DENOMINATIONS.map((d) => [d, Number(den[d] || 0)])), memo } : { counted, memo }) });
           if (s) { setSum(s); setInfo("レジ締めを記録しました"); }
-        }}>レジ締めを記録する</Btn>
+        }} disabled={!entered}>レジ締めを記録する</Btn>
         {sum.closing && !stale && <p className="hint">{timeOf(sum.closing.at)} に記録済み。CSVも保存しておきましょう。 <button className="link" onClick={onCsv}>CSVで書き出す</button></p>}
       </section>
     </>
