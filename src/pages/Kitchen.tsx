@@ -46,7 +46,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
     }
     if (snapshot) seen.current = ids;
   }, [cookingIds, sound, snapshot]);
-  const label = (o: View) => ticketLabel(shop?.prefix ?? "", o.ticket);
+  const label = (o: View) => (o.delivery ? `配-${o.delivery.no}` : ticketLabel(shop?.prefix ?? "", o.ticket));
   const set = (o: View, s: Tab) => conn.send({ kind: "setStatus", orderId: o.id, status: s });
   const handOver = (o: View) => {
     set(o, "handed");
@@ -73,6 +73,9 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
             <span className={`kcard__time ${mins >= 10 ? "is-late" : ""}`}>{mins === 0 ? "たった今" : `${mins}分前`}</span>
           </div>
         </div>
+        {o.delivery && (
+          <p className="kcard__delivery"><b>配達</b> → {o.delivery.place}{o.delivery.note && `（${o.delivery.note}）`}</p>
+        )}
         {(o.pending || (o.ticket != null && dup.has(o.ticket))) && (
           <div className="kcard__tags">
             {o.pending && <span className="tag">未送信</span>}
@@ -90,7 +93,9 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
         {o.status === "cooking" && <Btn variant="ok" big onClick={() => set(o, "ready")}>できた</Btn>}
         {o.status === "ready" && (
           <div className="kcard__actions">
-            <Btn variant="accent" big onClick={() => handOver(o)}>札を受け取って渡した</Btn>
+            {o.delivery
+              ? <><p className="kcard__wait">配達係が受け取りに来ます（配達係の画面で「受け取った」を押すと、ここから消えます）</p><button className="link" onClick={() => set(o, "handed")}>配達係に渡した</button></>
+              : <Btn variant="accent" big onClick={() => handOver(o)}>札を受け取って渡した</Btn>}
             <button className="link" onClick={() => set(o, "cooking")}>調理中に戻す</button>
           </div>
         )}

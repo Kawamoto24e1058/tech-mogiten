@@ -13,9 +13,11 @@ import { Setup } from "./pages/Setup";
 import { Report } from "./pages/Report";
 import { Terms } from "./pages/Terms";
 import { Guide } from "./pages/Guide";
+import { Move } from "./pages/Move";
+import { HubAdmin, HubCourier, HubOrder } from "./pages/Hub";
 import { Recover } from "./pages/Recover";
 import { forgetShop, rememberShop } from "./myshops";
-import { adminKey, api, ApiError, codeKey, load, save } from "./util";
+import { adminKey, api, ApiError, CLUB, codeKey, load, save } from "./util";
 
 /**
  * 店舗の情報（名前・色・リンクで保護しているか）。端末に覚えている値ですぐ表示し、裏でサーバーに確かめる。
@@ -139,6 +141,12 @@ export function App() {
   if (parts.length === 1 && parts[0] === "new") return <CreateShop />;
   if (parts.length === 1 && parts[0] === "terms") return <Terms />;
   if (parts.length === 1 && parts[0] === "guide") return <Guide />;
+  if (parts.length === 1 && parts[0] === "move" && CLUB) return <Move />;
+  if (parts[0] === "hub" && CLUB) {
+    if (parts[1] === "order") return <HubOrder />;
+    if (parts[1] === "courier") return <HubCourier />;
+    return <HubAdmin />;
+  }
   if (parts.length === 1 && parts[0] === "recover") return <Recover />;
   if (parts.length === 1 && parts[0] === "admin") return <MasterAdmin />;
   if (screen === "display") return <Display shopId={shopId} />;

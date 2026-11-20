@@ -106,3 +106,6 @@ export async function loginWithPassword(shopId: string, password: string): Promi
   localStorage.setItem(adminKey(shopId), r.adminKey);
   return r.adminKey;
 }
+
+/** テック部版（配達・引っ越しを使える）としてビルドしたか */
+export const CLUB = import.meta.env.VITE_CLUB === "1";

@@ -139,6 +139,8 @@ export function summarize(
   const valid = orders.filter((o) => o.day === day && o.status !== "cancelled");
   const cancelled = orders.filter((o) => o.day === day && o.status === "cancelled");
   const sales = valid.reduce((s, o) => s + o.total, 0);
+  const deliveries = valid.filter((o) => o.delivery);
+  const deliveryUnsettled = deliveries.filter((o) => !o.delivery!.settledAt).reduce((s, o) => s + o.total, 0);
 
   const items = new Map<string, { itemId: string; name: string; qty: number; amount: number }>();
   for (const o of valid) {
@@ -169,8 +171,10 @@ export function summarize(
     cancelledCount: cancelled.length,
     cancelledAmount: cancelled.reduce((s, o) => s + o.total, 0),
     floatCash,
-    expectedCash: floatCash + sales,
+    // 配達の注文は、配達係からお金を受け取るまでレジには入っていない
+    expectedCash: floatCash + sales - deliveryUnsettled,
     closing,
+    delivery: { count: deliveries.length, sales: deliveries.reduce((s, o) => s + o.total, 0), unsettled: deliveryUnsettled },
   };
 }
 

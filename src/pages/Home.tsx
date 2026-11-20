@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { accentStyle } from "../components/ui";
 import { IconNext } from "../components/icons";
 import { SiteHeader } from "../components/SiteHeader";
+import { CLUB } from "../util";
 import { canPromptInstall, isIOS, isStandalone, onInstallChange, promptInstall } from "../install";
 import { forgetShop, myShops, type MyShop } from "../myshops";
 import { adminKey, api, ApiError, codeKey, load } from "../util";
@@ -104,6 +105,7 @@ export function Home() {
         <InstallCard />
 
         {canAdminAny && entries.length > 1 && <a className="home__master" href="/admin">この端末で管理している店舗の売上をまとめて見る</a>}
+        {CLUB && <p className="home__club"><a className="btn" href="/hub/admin">配達センター</a><a className="btn" href="/move">前のURLから引っ越す</a></p>}
         <p className="home__terms"><a href="/guide">使い方・よくある質問</a>　<a href="/terms">利用規約・プライバシーポリシー</a>　<a href="/recover">管理画面に入れなくなった方</a></p>
       </main>
     </div>
@@ -171,7 +173,7 @@ function Start() {
           <FlowPreview />
         </section>
       </main>
-      <footer className="start__foot"><a href="/guide">使い方・よくある質問</a><span aria-hidden>・</span><a href="/terms">利用規約</a><span aria-hidden>・</span><a href="/recover">管理画面に入れなくなった方</a></footer>
+      <footer className="start__foot">{CLUB && <><a href="/move">前のURLから引っ越す</a><span aria-hidden>・</span></>}<a href="/guide">使い方・よくある質問</a><span aria-hidden>・</span><a href="/terms">利用規約</a><span aria-hidden>・</span><a href="/recover">管理画面に入れなくなった方</a></footer>
     </div>
   );
 }

@@ -18,6 +18,13 @@ export function SubStats({ s }: { s: DaySummary }) {
       客単価 <b>{yen(s.averagePerOrder)}</b>
       <span aria-hidden>・</span>
       キャンセル <b>{s.cancelledCount}件</b>{s.cancelledCount > 0 && `（${yen(s.cancelledAmount)}）`}
+      {s.delivery && s.delivery.count > 0 && (
+        <>
+          <span aria-hidden>・</span>
+          配達 <b>{s.delivery.count}件 {yen(s.delivery.sales)}</b>
+          {s.delivery.unsettled > 0 && <>（配達係から未精算 <b className="substats__warn">{yen(s.delivery.unsettled)}</b>。あるはずの現金には入っていません）</>}
+        </>
+      )}
     </p>
   );
 }

@@ -14,12 +14,37 @@
   "durable_objects": {
     "bindings": [
       { "name": "SHOP", "class_name": "ShopDO" },
-      { "name": "REGISTRY", "class_name": "Registry" }
+      { "name": "REGISTRY", "class_name": "Registry" },
+      { "name": "HUB", "class_name": "DeliveryHub" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["ShopDO"] },
-    { "tag": "v2", "new_sqlite_classes": ["Registry"] }
+    { "tag": "v2", "new_sqlite_classes": ["Registry"] },
+    { "tag": "v3", "new_sqlite_classes": ["DeliveryHub"] }
   ],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "env": {
+    // テック部版（文化祭 2026 用のフォーク）。配達を使える。今の公開版（tech-mogiten）から店舗のデータを引っ越せる
+    //   ビルド: npm run build:club   公開: npm run deploy:club   開発: npm run dev:club
+    "club": {
+      "name": "tech-mogiten-club",
+      "vars": { "CLUB_MODE": "1" },
+      "durable_objects": {
+        "bindings": [
+          { "name": "SHOP", "class_name": "ShopDO" },
+          { "name": "REGISTRY", "class_name": "Registry" },
+          { "name": "HUB", "class_name": "DeliveryHub" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["ShopDO"] },
+        { "tag": "v2", "new_sqlite_classes": ["Registry"] },
+        { "tag": "v3", "new_sqlite_classes": ["DeliveryHub"] }
+      ],
+      // 引っ越し元（今の公開版）を Worker から直接呼ぶ
+      "services": [{ "binding": "OLD", "service": "tech-mogiten" }],
+      "observability": { "enabled": true }
+    }
+  }
 }

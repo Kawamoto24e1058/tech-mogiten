@@ -69,6 +69,22 @@ export interface Order {
   day: string;
   /** 削除（ゴミ箱）した時刻。null なら通常 */
   deletedAt?: number | null;
+  /** 配達の注文（テック部版）。お金は届けたときに配達係が受け取る */
+  delivery?: DeliveryInfo | null;
+}
+
+/** 配達の注文の印 */
+export interface DeliveryInfo {
+  /** 配達番号（例: 12 → 画面では「配-12」） */
+  no: number;
+  /** 配達の注文の ID（配達センター側） */
+  deliveryId: string;
+  /** 届け先の名前（例: 屋内展示） */
+  place: string;
+  /** 受け取る人の目印（任意） */
+  note?: string;
+  /** 配達係からこの店のレジにお金を受け取った時刻。null なら未精算 */
+  settledAt?: number | null;
 }
 
 export interface ShopPublic {
@@ -151,6 +167,8 @@ export interface DaySummary {
   floatCash: number;
   expectedCash: number;
   closing: Closing | null;
+  /** 配達の注文（テック部版）。売上には入れるが、配達係から受け取るまではレジの現金に入っていない */
+  delivery?: { count: number; sales: number; unsettled: number };
 }
 
 export interface Closing {
@@ -185,3 +203,16 @@ export const MENU_COLOR_KEYS = Object.keys(MENU_COLORS);
 
 /** レジから取り消せる時間（これを過ぎたら管理画面から） */
 export const STAFF_CANCEL_WINDOW_MS = 5 * 60 * 1000;
+
+/** 引っ越し（今の公開版 → テック部版）で運ぶ、店舗のすべてのデータ */
+export interface MoveBundle {
+  adminKey: string;
+  staffKey: string | null;
+  shop: { name: string; color: string; prefix: string; ticketCount: number; festivalStart?: string | null; organization?: string | null; protected: boolean };
+  menu: (MenuItem & { soldOut?: boolean; sort?: number })[];
+  discounts: DiscountRule[];
+  expenses: Expense[];
+  orders: Order[];
+  floats: Record<string, number>;
+  closings: Closing[];
+}

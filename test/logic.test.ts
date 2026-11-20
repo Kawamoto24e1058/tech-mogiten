@@ -126,3 +126,20 @@ describe("日付の表示", () => {
     expect(dayLabel("2026-11-18", null)).toBe("11/18（水）");
   });
 });
+
+describe("配達の注文（テック部版）", () => {
+  it("売上には入れるが、配達係から受け取るまではあるはずの現金に入れない", () => {
+    const day = "2026-11-21";
+    const d = (no: number, settledAt: number | null) => ({ no, deliveryId: `d${no}`, place: "屋内展示", settledAt });
+    const orders = [
+      order({ id: "a", day, total: 300 }),
+      order({ id: "b", day, total: 450, delivery: d(1, null) }),
+      order({ id: "c", day, total: 200, delivery: d(2, 123) }),
+      order({ id: "x", day, total: 999, status: "cancelled", delivery: d(3, null) }),
+    ];
+    const s = summarize(day, orders, 1000, null);
+    expect(s.sales).toBe(950);
+    expect(s.delivery).toEqual({ count: 2, sales: 650, unsettled: 450 });
+    expect(s.expectedCash).toBe(1000 + 950 - 450);
+  });
+});

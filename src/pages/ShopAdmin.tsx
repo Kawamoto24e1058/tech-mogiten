@@ -4,6 +4,7 @@ import { DENOMINATIONS, MENU_COLORS, MENU_COLOR_KEYS } from "../../shared/types"
 import { dayLabel, menuColor, ticketLabel, yen } from "../../shared/logic";
 import { AppBar, Banner, Btn, Modal, Page, ShopBadge } from "../components/ui";
 import { Logo } from "../components/Logo";
+import { CLUB } from "../util";
 import { ItemRanking, Kpis, SlotBars, SubStats } from "../components/Summary";
 import { adminKey, api, ApiError, codeKey, timeOf, todayJst } from "../util";
 import { LinkRow, RecoveryCodeBox } from "../components/ShareLinks";
@@ -141,6 +142,8 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
           <li><a href={`/${shopId}/kitchen`}>厨房</a></li>
           <li><a href={`/${shopId}/display`} target="_blank" rel="noreferrer">呼び出し表示 ↗</a></li>
           <li><a href={`/${shopId}/setup?step=1`}>はじめの設定</a></li>
+          {CLUB && <li><a href="/hub/admin">配達センター</a></li>}
+          {CLUB && <li><a href="/hub/courier">配達係の画面</a></li>}
         </ul>
         <button className="side__refresh" onClick={() => void refresh()}>最新にする</button>
         <button className="side__danger" onClick={() => { setTab("settings"); setTimeout(() => document.getElementById("delete")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}>店舗を完全に削除…</button>

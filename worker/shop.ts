@@ -4,7 +4,7 @@ import {
 } from "../shared/logic";
 import type {
   ClientMessage, Closing, DiscountRule, DisplaySnapshot, Expense, MenuItem, ShopExport, NewOrderInput, Op, Order, OrderStatus,
-  Role, ServerMessage, ShopPublic, ShopSnapshot,
+  Role, ServerMessage, ShopPublic, ShopSnapshot, DeliveryInfo, MoveBundle,
 } from "../shared/types";
 import { DENOMINATIONS, MENU_COLORS, STAFF_CANCEL_WINDOW_MS } from "../shared/types";
 import type { Env } from "./index";
@@ -160,6 +160,8 @@ export class ShopDO extends DurableObject<Env> {
     // 間違いの回数は接続元ごとに数える（第三者が店舗全体を締め出せないように）
     const failCols = this.sql.exec<{ name: string }>("PRAGMA table_info(auth_fail)").toArray().map((r) => r.name);
     if (!failCols.includes("ip")) this.sql.exec("ALTER TABLE auth_fail ADD COLUMN ip TEXT");
+    // 配達の注文（テック部版）。お金は届けたときに受け取り、配達係から受け取ったら settled_at を入れる
+    if (!orderCols.includes("delivery")) this.sql.exec("ALTER TABLE orders ADD COLUMN delivery TEXT");
   }
 
   // ---------- 設定 ----------
@@ -205,6 +207,62 @@ export class ShopDO extends DurableObject<Env> {
     this.audit("create.shop", null, { name });
     await this.touch();
     return keys;
+  }
+
+  /**
+   * 引っ越し: 今の公開版から運んだデータで、この店舗を丸ごと置き換える（何度でもやり直せる）。
+   * 店舗ID・部員用リンク・管理用リンクの鍵は同じにするので、URL の前半を変えるだけでそのまま使える
+   */
+  private async moveIn(id: string, b: MoveBundle) {
+    if (!b?.adminKey || !b.shop?.name || !Array.isArray(b.orders) || !Array.isArray(b.menu)) throw new HttpError(400, "引っ越しのデータが不正です");
+    for (const ws of this.ctx.getWebSockets()) {
+      try { ws.close(4005, "引っ越しで作り直しました。開き直してください"); } catch { /* 閉じている */ }
+    }
+    await this.ctx.storage.deleteAll();
+    this.migrate();
+    const s = b.shop;
+    this.set("shopId", id);
+    this.set("name", String(s.name).slice(0, 30));
+    this.set("color", /^#[0-9a-fA-F]{6}$/.test(String(s.color)) ? s.color : "#1565c0");
+    this.set("prefix", String(s.prefix ?? "").slice(0, 3));
+    this.set("ticketCount", String(Math.min(999, Math.max(1, Math.floor(Number(s.ticketCount)) || 30))));
+    this.set("festivalStart", s.festivalStart ?? null);
+    this.set("organization", s.organization ?? null);
+    if (s.protected) this.set("protected", "1");
+    this.set("createdAt", String(Date.now()));
+    this.set("movedAt", String(Date.now()));
+    this.set("adminHash", await sha256(`${id}:${b.adminKey}`));
+    if (b.staffKey) {
+      this.set("staffHash", await sha256(`${id}:${b.staffKey}`));
+      this.set("staffKey", b.staffKey);
+    }
+    this.set("discounts", JSON.stringify(b.discounts ?? []));
+    this.set("expenses", JSON.stringify(b.expenses ?? []));
+    for (const [day, amt] of Object.entries(b.floats ?? {})) if (/^\d{4}-\d{2}-\d{2}$/.test(day)) this.set(`float:${day}`, String(Math.floor(Number(amt)) || 0));
+    b.menu.forEach((x, i) => {
+      this.sql.exec(
+        "INSERT INTO menu (id, name, price, sold_out, sort, active, stock, color, cost) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+        String(x.id), String(x.name).slice(0, 30), Math.floor(Number(x.price)) || 0, x.soldOut ? 1 : 0, Number(x.sort ?? i + 1) || i + 1,
+        x.stock ?? null, x.color ?? null, x.cost ?? null,
+      );
+    });
+    let n = 0;
+    for (const o of b.orders) {
+      this.sql.exec(
+        `INSERT OR REPLACE INTO orders (id, seq, ticket, status, lines, total, received, change, created_at, ready_at, handed_at, cancelled_at, cancel_reason, ticket_released, day, deleted_at, delivery)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        o.id, o.seq, o.ticket ?? null, o.status, JSON.stringify(o.lines ?? []), o.total, o.received, o.change, o.createdAt, o.readyAt ?? null, o.handedAt ?? null,
+        o.cancelledAt ?? null, o.cancelReason ?? null, o.ticketReleased ? 1 : 0, o.day, o.deletedAt ?? null, o.delivery ? JSON.stringify(o.delivery) : null,
+      );
+      n++;
+    }
+    for (const c of b.closings ?? []) {
+      this.sql.exec("INSERT OR REPLACE INTO closings (day, at, counted, expected, diff, denominations, memo) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        c.day, c.at, c.counted, c.expected, c.diff, JSON.stringify(c.denominations ?? {}), c.memo ?? "");
+    }
+    this.audit("move", null, { orders: n, menu: b.menu.length });
+    await this.touch();
+    return { ok: true, orders: n, menu: b.menu.length, shop: this.shopPublic() };
   }
 
   /** キーを作り直す。古いキー（リンク）は使えなくなる */
@@ -326,6 +384,7 @@ export class ShopDO extends DurableObject<Env> {
       ticketReleased: r.ticket_released === 1,
       day: r.day as string,
       deletedAt: (r.deleted_at as number | null) ?? null,
+      delivery: r.delivery ? (JSON.parse(r.delivery as string) as DeliveryInfo) : null,
     };
   }
 
@@ -419,7 +478,7 @@ export class ShopDO extends DurableObject<Env> {
   private displaySnapshot(): DisplaySnapshot {
     const shop = this.shopPublic();
     const ready = this.sql
-      .exec<{ ticket: number; ready_at: number }>("SELECT ticket, ready_at FROM orders WHERE status = 'ready' AND ticket IS NOT NULL AND deleted_at IS NULL ORDER BY ready_at")
+      .exec<{ ticket: number; ready_at: number }>("SELECT ticket, ready_at FROM orders WHERE status = 'ready' AND ticket IS NOT NULL AND deleted_at IS NULL AND delivery IS NULL ORDER BY ready_at")
       .toArray()
       .map((r) => ({ ticket: ticketLabel(shop.prefix, r.ticket), readyAt: r.ready_at }));
     const cooking = this.sql
@@ -485,18 +544,19 @@ export class ShopDO extends DurableObject<Env> {
   }
 
   /** 戻り値は注意メッセージ（札番号の重複など） */
-  private createOrder(input: NewOrderInput): string | undefined {
+  private createOrder(input: NewOrderInput, delivery?: DeliveryInfo): string | undefined {
     if (typeof input?.id !== "string" || input.id.length < 8 || input.id.length > 64) throw new HttpError(400, "注文IDが不正です");
     if (this.order(input.id)) return; // 再送された注文は無視する
     const lines = priceLines(this.menu(), this.discounts(), Array.isArray(input.lines) ? input.lines : []);
     if (lines.length === 0) throw new HttpError(400, "注文が空です");
     const total = linesTotal(lines);
     if (total < 0) throw new HttpError(400, "合計がマイナスです。割引の数を確認してください");
-    const received = Math.floor(Number(input.received));
+    // 配達の注文は届けたときに払う。お釣りは配達係が渡すので、ここではちょうどとして記録する
+    const received = delivery ? total : Math.floor(Number(input.received));
     if (!Number.isFinite(received) || received < total) throw new HttpError(400, "預かり金が足りません");
 
     const count = this.shopPublic().ticketCount;
-    let ticket: number | null = input.ticket == null ? null : Math.floor(Number(input.ticket));
+    let ticket: number | null = input.ticket == null || delivery ? null : Math.floor(Number(input.ticket));
     if (ticket != null && !(ticket >= 1 && ticket <= count)) ticket = null;
 
     const now = Date.now();
@@ -511,9 +571,9 @@ export class ShopDO extends DurableObject<Env> {
     }
 
     this.sql.exec(
-      `INSERT INTO orders (id, seq, ticket, status, lines, total, received, change, created_at, day)
-       VALUES (?, ?, ?, 'cooking', ?, ?, ?, ?, ?, ?)`,
-      input.id, seq, ticket, JSON.stringify(lines), total, received, received - total, createdAt, businessDay(createdAt),
+      `INSERT INTO orders (id, seq, ticket, status, lines, total, received, change, created_at, day, delivery)
+       VALUES (?, ?, ?, 'cooking', ?, ?, ?, ?, ?, ?, ?)`,
+      input.id, seq, ticket, JSON.stringify(lines), total, received, received - total, createdAt, businessDay(createdAt), delivery ? JSON.stringify(delivery) : null,
     );
     // 残り数を減らし、なくなったら売り切れにする
     const over: string[] = [];
@@ -526,7 +586,7 @@ export class ShopDO extends DurableObject<Env> {
     }
     if (over.length) warning = [warning, `${over.join("、")}は残り数を超えて売れています。厨房で確認してください`].filter(Boolean).join(" / ");
 
-    this.audit("create", input.id, { seq, ticket, total, received, warning });
+    this.audit("create", input.id, { seq, ticket, total, received, warning, delivery: delivery ? `配-${delivery.no} ${delivery.place}` : undefined });
     return warning;
   }
 
@@ -701,6 +761,10 @@ export class ShopDO extends DurableObject<Env> {
     if (url.pathname.endsWith("/init") && req.method === "POST" && req.headers.get("x-internal") === "1") {
       return json(await this.initShop(shopId, await this.body(req)));
     }
+    // 引っ越し（テック部版の Worker の中からだけ呼ばれる）。この店舗を、運ばれてきたデータで丸ごと置き換える
+    if (url.pathname.endsWith("/move-in") && req.method === "POST" && req.headers.get("x-internal") === "1") {
+      return json(await this.moveIn(shopId, await this.body<MoveBundle>(req)));
+    }
     await this.ensureShopId(shopId);
     const path = url.pathname.replace(/^\/api\/shops\/[^/]+/, "") || "/";
     const m = req.method;
@@ -763,6 +827,41 @@ export class ShopDO extends DurableObject<Env> {
     }
 
     // レジの履歴（スタッフ用）
+    // ---------- 配達（テック部版）: 配達センターから、部員用リンクの鍵で呼ばれる ----------
+    if (path.startsWith("/delivery/")) {
+      await this.authorize(req, "staff");
+      const sub = path.slice("/delivery".length);
+      if (sub === "/menu" && m === "GET") {
+        return json({ shop: this.shopPublic(), menu: this.menu().filter((x) => x.price > 0), discounts: this.discounts().filter((d) => d.enabled) });
+      }
+      const b = await this.body<{ id?: string; ids?: string[]; lines?: { itemId: string; qty: number }[]; delivery?: DeliveryInfo }>(req);
+      if (sub === "/order" && m === "POST") {
+        const d = b.delivery;
+        if (!d || !d.deliveryId || !d.place) throw new HttpError(400, "配達の情報がありません");
+        const info: DeliveryInfo = { no: Math.floor(Number(d.no)) || 0, deliveryId: String(d.deliveryId).slice(0, 64), place: String(d.place).slice(0, 30), note: d.note ? String(d.note).slice(0, 40) : undefined, settledAt: null };
+        const warning = this.createOrder({ id: String(b.id ?? ""), ticket: null, lines: b.lines ?? [], received: 0, createdAt: Date.now() }, info);
+        const o = this.order(String(b.id));
+        this.broadcast();
+        return json({ order: o, warning });
+      }
+      const ids = Array.isArray(b.ids) ? b.ids.map(String).slice(0, 200) : [];
+      const list = ids.map((id) => this.order(id)).filter((o): o is Order => !!o && !!o.delivery);
+      if (sub === "/status" && m === "POST") return json({ orders: list });
+      if (sub === "/handed" && m === "POST") {
+        for (const o of list) if (o.status === "ready" || o.status === "cooking") this.setStatus(o.id, "handed");
+      } else if (sub === "/settle" && m === "POST") {
+        const now = Date.now();
+        for (const o of list) {
+          if (o.delivery!.settledAt) continue;
+          this.sql.exec("UPDATE orders SET delivery = ? WHERE id = ?", JSON.stringify({ ...o.delivery, settledAt: now }), o.id);
+        }
+        this.audit("delivery.settle", null, { orders: list.length, total: list.reduce((s, o) => s + o.total, 0) });
+      } else if (sub === "/cancel" && m === "POST") {
+        for (const o of list) if (o.status !== "cancelled") this.cancelOrder(o, "配達の取り消し", "admin");
+      } else throw new HttpError(404, "見つかりません");
+      this.broadcast();
+      return json({ orders: ids.map((id) => this.order(id)).filter(Boolean) });
+    }
     if (path === "/history" && m === "GET") {
       await this.authorize(req, "staff");
       const orders = this.sql.exec("SELECT * FROM orders WHERE day = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 300", today).toArray().map((r) => this.rowToOrder(r));
