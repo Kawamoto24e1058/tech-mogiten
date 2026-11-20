@@ -34,6 +34,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
   const shop = snapshot?.shop ?? null;
   const orders = viewOrders(snapshot, outbox);
   const cooking = orders.filter((o) => o.status === "cooking").sort((a, b) => a.createdAt - b.createdAt);
+  const deliveryCooking = cooking.filter((o) => o.delivery);
   const ready = orders.filter((o) => o.status === "ready").sort((a, b) => (a.readyAt ?? 0) - (b.readyAt ?? 0));
   const handed = orders.filter((o) => o.status === "handed").sort((a, b) => (b.handedAt ?? 0) - (a.handedAt ?? 0));
   const lists: Record<Tab, View[]> = { cooking, ready, handed };
@@ -65,7 +66,14 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
   const card = (o: View, i: number) => {
     const mins = minutesSince(o.status === "ready" && o.readyAt ? o.readyAt : o.createdAt, now);
     return (
-      <article key={o.id} className={`kcard kcard--${o.status}`} style={{ "--i": i } as CSSProperties} aria-label={`${label(o)} ${TAB_LABEL[o.status as Tab]}`}>
+      <article key={o.id} className={`kcard kcard--${o.status} ${o.delivery ? "kcard--delivery" : ""}`} style={{ "--i": i } as CSSProperties} aria-label={`${label(o)} ${TAB_LABEL[o.status as Tab]}`}>
+        {o.delivery && (
+          <div className="kcard__ribbon">
+            <span className="kcard__ribbon-tag">配達依頼</span>
+            <b>{o.delivery.place} へ</b>
+            {o.delivery.note && <span>（{o.delivery.note}）</span>}
+          </div>
+        )}
         <div className="kcard__head">
           <span className="kcard__ticket">{label(o)}</span>
           <div className="kcard__side">
@@ -73,9 +81,6 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
             <span className={`kcard__time ${mins >= 10 ? "is-late" : ""}`}>{mins === 0 ? "たった今" : `${mins}分前`}</span>
           </div>
         </div>
-        {o.delivery && (
-          <p className="kcard__delivery"><b>配達</b> → {o.delivery.place}{o.delivery.note && `（${o.delivery.note}）`}</p>
-        )}
         {(o.pending || (o.ticket != null && dup.has(o.ticket))) && (
           <div className="kcard__tags">
             {o.pending && <span className="tag">未送信</span>}
@@ -150,6 +155,12 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
       <div className="banners">
         <Notices notices={state.notices} onDismiss={(id) => conn.dismiss(id)} />
         {status === "offline" && <Banner kind="warn">オフラインです。新しい注文が届かないことがあります。レジと口頭で確認してください。</Banner>}
+        {deliveryCooking.length > 0 && (
+          <div className="kdelivery-alert" role="status">
+            <b>配達の依頼 {deliveryCooking.length}件</b>
+            <span>{deliveryCooking.map((o) => `配-${o.delivery!.no} → ${o.delivery!.place}`).join("　")}</span>
+          </div>
+        )}
       </div>
       {!snapshot ? (
         <main className="empty-state"><p>読み込んでいます…</p></main>

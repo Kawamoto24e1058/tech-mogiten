@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { changeBreakdown, discountLines, menuColor, holdsTicket, linesTotal, quickAmounts, ticketLabel, yen } from "../../shared/logic";
 import { RegisterHistory } from "../components/RegisterHistory";
+import { HubOrder } from "./Hub";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
 import { IconBack, IconBackspace, IconMinus, IconPlus } from "../components/icons";
 import type { CSSProperties } from "react";
 import { useConnection, viewMenu, viewOrders } from "../sync";
-import { api, buzz, load, save, uuid } from "../util";
+import { api, buzz, CLUB, load, save, uuid } from "../util";
 
 type CartLine = { itemId: string; qty: number };
 const LOW_TICKETS = 3;
@@ -31,6 +32,14 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   useWakeLock();
   // タブレット（横向き）・PC は「札 → 注文 → 会計」を左から並べる
   const wide = useIsWide(760);
+
+  // テック部版: 配達に参加している店なら、レジから「ほかの店に配達を頼む」ができる
+  const [inHub, setInHub] = useState(false);
+  const [delivering, setDelivering] = useState(false);
+  useEffect(() => {
+    if (!CLUB) return;
+    api<{ shops: { id: string }[] }>("/api/hub/public", null).then((h) => setInHub(h.shops.some((s) => s.id === shopId))).catch(() => {});
+  }, [shopId]);
 
   const draftKey = `draft:${shopId}`;
   const [cart, setCartRaw] = useState<CartLine[]>(() => load(draftKey, []));
@@ -175,6 +184,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       right={
         <>
           {snapshot && <span className="queue" title="調理を待っている注文の数">調理中 <b>{cookingCount}</b></span>}
+          {inHub && <button className={`appbar__btn appbar__btn--delivery ${delivering ? "is-on" : ""}`} onClick={() => setDelivering(!delivering)}>{delivering ? "レジに戻る" : "配達を頼む"}</button>}
           {snapshot && <button className="appbar__btn" onClick={() => setHistoryOpen(true)}>履歴</button>}
           <ConnBadge status={status} pending={outbox.length} />
         </>
@@ -190,6 +200,15 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       onClose={() => setHistoryOpen(false)}
     />
   );
+
+  if (delivering) {
+    return (
+      <Page shop={shop} className="page--work">
+        {appbar}
+        <HubOrder embed={{ key: code, shopId, onBack: () => setDelivering(false) }} />
+      </Page>
+    );
+  }
 
   if (!snapshot) {
     return (

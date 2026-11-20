@@ -1821,3 +1821,19 @@ a.appbar__home:hover { background: #f2f2f3; }
 .close-total .input { max-width: 14rem; font-size: 1.5rem; font-weight: 700; min-height: 56px; }
 .close-total ~ .link { display: flex; width: fit-content; margin-top: 6px; }
 .result .result__sum { border-top: 1px solid var(--text); font-weight: 700; }
+
+/* 厨房: 配達の依頼をひと目で分かるように（黒い帯と太い枠、上にお知らせ） */
+.kcard--delivery { border: 3px solid #18181b !important; }
+.kcard__ribbon { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: -14px -16px 4px; padding: 10px 14px; border-radius: 10px 10px 0 0; background: #18181b; color: #fff; font-size: 1.05rem; }
+.kcard__ribbon-tag { padding: 2px 8px; border-radius: 6px; background: #fff; color: #18181b; font-weight: 700; font-size: 0.85rem; }
+.kcard__ribbon span:last-child:not(.kcard__ribbon-tag) { font-size: 0.9rem; opacity: 0.9; }
+.kdelivery-alert { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 10px 14px; border-radius: 10px; background: #18181b; color: #fff; }
+.kdelivery-alert b { font-size: 1.05rem; }
+.kdelivery-alert span { font-size: 0.9rem; opacity: 0.9; }
+.appbar__btn--delivery { border-color: #18181b; background: #18181b; color: #fff; }
+.appbar__btn--delivery:hover { background: #27272a; }
+.appbar__btn--delivery.is-on { background: #fff; color: #18181b; }
+.hub-embed-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: #fafafa; }
+.hub-embed-head div { display: grid; gap: 2px; }
+.hub-embed-head b { font-size: 1.1rem; }
+.hub-embed-head span { color: var(--muted); font-size: 0.88rem; }

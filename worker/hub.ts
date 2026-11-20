@@ -39,8 +39,9 @@ function parseLink(link: unknown): { id: string; key: string } | null {
 }
 
 type Role = "admin" | "place" | "courier";
+/** 届け先。参加している店のレジから頼むときは、その店そのものが届け先（id は shop:店舗ID） */
 interface HubShop { id: string; name: string; color: string; staffKey: string }
-interface Place { id: string; name: string; key: string }
+interface Place { id: string; name: string; key: string; shopId?: string }
 export interface DeliveryPart { shopId: string; shopName: string; orderId: string; total: number; lines: { name: string; qty: number }[]; settledAt: number | null; status?: string }
 export interface Delivery {
   id: string; no: number; placeId: string; placeName: string; note: string; status: "open" | "picked" | "delivered" | "cancelled";
@@ -109,6 +110,19 @@ export class DeliveryHub extends DurableObject<Env> {
   private async authorize(req: Request, allowed: Role[]): Promise<{ role: Role; place?: Place }> {
     const key = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
     if (!key) throw new HttpError(401, "配達用のリンクから開いてください");
+    // 参加している店のレジから: x-hub-shop に店舗ID、鍵はその店の部員用（または管理用）
+    const fromShop = req.headers.get("x-hub-shop");
+    if (allowed.includes("place") && fromShop) {
+      const s = this.shops().find((x) => x.id === fromShop);
+      if (!s) throw new HttpError(403, "この店は配達に参加していません。テック部の配達センターで店を足してもらってください");
+      let ok = s.staffKey === key;
+      if (!ok) {
+        const r = await this.shopCall<{ role: string }>(s.id, "", "/auth", { code: key });
+        ok = r.status === 200;
+      }
+      if (ok) return { role: "place", place: { id: `shop:${s.id}`, name: s.name, key: "", shopId: s.id } };
+      throw new HttpError(401, "この店のリンクが正しくないか、作り直されています");
+    }
     if (allowed.includes("place")) {
       const h = await sha256(`place:${key}`);
       const r = this.sql.exec("SELECT id, name, key FROM places WHERE key_hash = ? AND active = 1", h).toArray()[0];
@@ -218,7 +232,7 @@ export class DeliveryHub extends DurableObject<Env> {
     // ---------- 届け先の係: メニューを見て注文する ----------
     if (path === "/menu" && m === "GET") {
       const who = await this.authorize(req, ["place", "admin"]);
-      const shops = await Promise.all(this.shops().map(async (s) => {
+      const shops = await Promise.all(this.shops().filter((s) => s.id !== who.place?.shopId).map(async (s) => {
         const r = await this.shopCall<{ menu: unknown[]; discounts: unknown[] }>(s.id, s.staffKey, "/delivery/menu");
         return r.status === 200 ? { id: s.id, name: s.name, color: s.color, menu: r.data.menu, discounts: r.data.discounts } : { id: s.id, name: s.name, color: s.color, menu: [], discounts: [], error: r.data.error ?? "メニューを読めません" };
       }));
@@ -238,7 +252,7 @@ export class DeliveryHub extends DurableObject<Env> {
       const byShop = new Map<string, { itemId: string; qty: number }[]>();
       for (const l of Array.isArray(b.lines) ? b.lines : []) {
         const qty = Math.floor(Number(l.qty));
-        if (!(qty >= 1 && qty <= 99) || !shops.some((s) => s.id === l.shopId)) continue;
+        if (!(qty >= 1 && qty <= 99) || !shops.some((s) => s.id === l.shopId) || l.shopId === who.place?.shopId) continue;
         byShop.set(l.shopId, [...(byShop.get(l.shopId) ?? []), { itemId: String(l.itemId), qty }]);
       }
       if (byShop.size === 0) throw new HttpError(400, "注文が空です");

@@ -142,15 +142,36 @@ const link = (base, id, key) => `${base}/${id}/join#k=${key}`;
     const gsum = (await call(CLUB, `/api/shops/${g.id}/admin/summary`, g.adminKey)).data;
     check(gsum.sales === 300 && gsum.delivery.unsettled === 300, "Grok: 売上300円・未精算300円（まだ渡していない）");
 
+    // ---------- 6b. 店のレジから「配達を頼む」----------
+    const R = await mk();
+    await R.p.addInitScript(([id, k]) => localStorage.setItem("code:" + id, k), [g.id, g.staffKey]);
+    await R.p.goto(`${CLUB}/${g.id}/register`);
+    await R.p.locator(".appbar__btn--delivery").waitFor({ timeout: 10000 });
+    await R.p.locator(".appbar__btn--delivery").click();
+    await R.p.locator(".hub-item__main", { hasText: "フランク" }).waitFor({ timeout: 10000 });
+    check(await R.p.locator(".hub-item__main", { hasText: "たこ焼き" }).count() === 0, "Grok のレジから頼むとき、Grok 自身のメニューは出ない");
+    await R.p.locator(".hub-item__main", { hasText: "フランク" }).click();
+    await R.p.click(".hub-cart button:has-text('配達を頼む')");
+    await R.p.locator(".hub-done__no").waitFor({ timeout: 10000 });
+    check((await R.p.locator(".hub-done").textContent()).includes("200円"), `レジから配達を頼める（${(await R.p.locator(".hub-done__no").textContent()).trim()}・200円）`);
+    await K.p.locator(".kcard--delivery", { hasText: "GrokE2E へ" }).waitFor({ timeout: 10000 });
+    check(true, "テック部の厨房に「配達依頼 ・ GrokE2E へ」の伝票が出る");
+    check((await K.p.locator(".kdelivery-alert").textContent()).includes("配達の依頼 1件"), "厨房の上に「配達の依頼 1件」のお知らせ");
+    await R.p.click("text=レジに戻る");
+    check(await R.p.locator(".menu-card__main", { hasText: "たこ焼き" }).count() === 1, "「レジに戻る」でいつものレジに戻る");
+    const rb = (await call(CLUB, "/api/hub/board", courierKey)).data.deliveries.find((d) => d.placeName === "GrokE2E");
+    check(!!rb, "配達係の画面に、届け先「GrokE2E」の配達が出る");
+    if (rb) await call(CLUB, `/api/hub/deliveries/${rb.id}/cancel`, courierKey, {});
+
     // ---------- 7. 取り消し・ほかの届け先 ----------
     const o2 = await call(CLUB, "/api/hub/order", placeKey, { id: crypto.randomUUID(), lines: [{ shopId: t.id, itemId: yaki.id, qty: 1 }] });
-    check(o2.status === 200 && o2.data.delivery.no === 2, "2件目は 配-2");
+    check(o2.status === 200 && o2.data.delivery.no === 3, "番号は日ごとの通し番号（配-3）");
     const seeOther = (await call(CLUB, "/api/hub/board", otherPlaceKey)).data;
     check(seeOther.deliveries.length === 0, "ほかの届け先の係には、この届け先の配達は見えない");
     check((await call(CLUB, `/api/hub/deliveries/${o2.data.delivery.id}/cancel`, otherPlaceKey, {})).status === 404, "ほかの届け先からは取り消せない");
     check((await call(CLUB, `/api/hub/deliveries/${o2.data.delivery.id}/cancel`, placeKey, {})).status === 200, "頼んだ届け先からは取り消せる");
     tsum = (await call(CLUB, `/api/shops/${t.id}/admin/summary`, t.adminKey)).data;
-    check(tsum.sales === 650 && tsum.cancelledCount === 1, "取り消した配達は売上に入らない（キャンセル1件）");
+    check(tsum.sales === 650 && tsum.cancelledCount === 2, "取り消した配達は売上に入らない（キャンセル2件）");
     const bad = await call(CLUB, "/api/hub/order", placeKey, { id: crypto.randomUUID(), lines: [{ shopId: "zzzzzzzzzz", itemId: "x", qty: 1 }] });
     check(bad.status === 400, "参加していない店の商品は頼めない");
   } catch (e) {

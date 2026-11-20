@@ -19,7 +19,9 @@ interface Delivery { id: string; no: number; placeName: string; note: string; st
 interface Board { role: string; place: { id: string; name: string } | null; deliveries: Delivery[]; cash: { shopId: string; shopName: string; color: string; amount: number; count: number }[] }
 interface HubShopMenu { id: string; name: string; color: string; menu: MenuItem[]; discounts: DiscountRule[]; error?: string }
 
-const hub = <T,>(path: string, key: string | null, init?: RequestInit) => api<T>(`/api/hub${path}`, key, init);
+/** 配達センターの API。shopId を渡すと「その店のレジから」として頼む（鍵はその店の部員用・管理用） */
+const hub = <T,>(path: string, key: string | null, init?: RequestInit, shopId?: string) =>
+  api<T>(`/api/hub${path}`, key, { ...init, headers: { ...(init?.headers as Record<string, string> | undefined), ...(shopId ? { "x-hub-shop": shopId } : {}) } });
 
 /** リンクの #k=… を端末に覚えて、アドレス欄から消す */
 function useHubKey(role: "place" | "courier"): string | null {
@@ -205,8 +207,14 @@ function HubManage({ adminKey: key }: { adminKey: string }) {
 // ====================================================================
 // 届け先の係: 注文
 // ====================================================================
-export function HubOrder() {
-  const key = useHubKey("place");
+/**
+ * 配達を頼む画面。届け先の係用リンク（/hub/order）と、各店のレジの「配達を頼む」（embed）で同じものを使う。
+ * レジからのときは、その店の店先が届け先になり、その店のメニューは出さない
+ */
+export function HubOrder({ embed }: { embed?: { key: string; shopId: string; onBack: () => void } } = {}) {
+  const linkKey = useHubKey("place");
+  const key = embed?.key ?? linkKey;
+  const sid = embed?.shopId;
   const [menu, setMenu] = useState<{ place: { id: string; name: string } | null; shops: HubShopMenu[] } | null>(null);
   const [error, setError] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -216,10 +224,10 @@ export function HubOrder() {
   const [warn, setWarn] = useState("");
   const loadMenu = useCallback(() => {
     if (!key) return;
-    hub<{ place: { id: string; name: string } | null; shops: HubShopMenu[] }>("/menu", key).then((m) => { setMenu(m); setError(""); }).catch((e) => setError(e.message));
-  }, [key]);
+    hub<{ place: { id: string; name: string } | null; shops: HubShopMenu[] }>("/menu", key, undefined, sid).then((m) => { setMenu(m); setError(""); }).catch((e) => setError(e.message));
+  }, [key, sid]);
   useEffect(() => { loadMenu(); const t = setInterval(loadMenu, 30000); return () => clearInterval(t); }, [loadMenu]);
-  const board = usePoll(() => (key ? hub<Board>("/board", key) : Promise.resolve(null)), 5000, [key]);
+  const board = usePoll(() => (key ? hub<Board>("/board", key, undefined, sid) : Promise.resolve(null)), 5000, [key, sid]);
 
   if (!key) return <div className="page page--grid"><HubHeader title="配達の注文" /><main className="recover"><Banner kind="warn">配達センターの管理者から届いた「配達注文用リンク」を開いてください。</Banner></main></div>;
 
@@ -231,7 +239,7 @@ export function HubOrder() {
     setBusy(true);
     setError("");
     try {
-      const r = await hub<{ delivery: Delivery; warning?: string }>("/order", key, { method: "POST", body: JSON.stringify({ id: uuid(), note, lines: lines.map((l) => ({ shopId: l.shop.id, itemId: l.item.id, qty: l.qty })) }) });
+      const r = await hub<{ delivery: Delivery; warning?: string }>("/order", key, { method: "POST", body: JSON.stringify({ id: uuid(), note, lines: lines.map((l) => ({ shopId: l.shop.id, itemId: l.item.id, qty: l.qty })) }) }, sid);
       setDone(r.delivery);
       setWarn(r.warning ?? "");
       setCart({});
@@ -245,9 +253,7 @@ export function HubOrder() {
   };
   const mine = (board.data?.deliveries ?? []).slice().reverse();
 
-  return (
-    <div className="page page--grid">
-      <HubHeader title="配達の注文" sub={menu?.place?.name} />
+  const body = (
       <main className="hub-order">
         <section className="hub-order__menu">
           {error && <Banner kind="error">{error}</Banner>}
@@ -306,7 +312,7 @@ export function HubOrder() {
                       <b className="hub-no">配-{d.no}</b>
                       <span className={`hub-state hub-state--${s.tone}`}>{s.text}</span>
                       <span className="hub-mine__sum">{yen(d.total)}</span>
-                      {d.status === "open" && <button className="link link--danger" onClick={async () => { if (confirm(`配-${d.no} を取り消しますか？`)) { await hub(`/deliveries/${d.id}/cancel`, key, { method: "POST", body: "{}" }).catch((e) => alert(e.message)); void board.reload(); } }}>取り消す</button>}
+                      {d.status === "open" && <button className="link link--danger" onClick={async () => { if (confirm(`配-${d.no} を取り消しますか？`)) { await hub(`/deliveries/${d.id}/cancel`, key, { method: "POST", body: "{}" }, sid).catch((e) => alert(e.message)); void board.reload(); } }}>取り消す</button>}
                     </li>
                   );
                 })}
@@ -315,6 +321,25 @@ export function HubOrder() {
           </section>
         </aside>
       </main>
+  );
+  if (embed) {
+    return (
+      <>
+        <div className="hub-embed-head">
+          <div>
+            <b>ほかの店に配達を頼む</b>
+            <span>この店（{menu?.place?.name ?? "…"}）の店先に届きます。お金は届けたときに配達係に払います。</span>
+          </div>
+          <Btn onClick={embed.onBack}>レジに戻る</Btn>
+        </div>
+        {body}
+      </>
+    );
+  }
+  return (
+    <div className="page page--grid">
+      <HubHeader title="配達の注文" sub={menu?.place?.name} />
+      {body}
     </div>
   );
 }
