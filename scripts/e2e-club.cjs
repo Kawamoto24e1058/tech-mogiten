@@ -163,15 +163,45 @@ const link = (base, id, key) => `${base}/${id}/join#k=${key}`;
     check(!!rb, "配達係の画面に、届け先「GrokE2E」の配達が出る");
     if (rb) await call(CLUB, `/api/hub/deliveries/${rb.id}/cancel`, courierKey, {});
 
+    // ---------- 6c. 配達メニュー: Grok のメニューにテック部のフランクを「配達」として追加し、レジで一緒に会計 ----------
+    const GA = await mk();
+    await GA.p.addInitScript(([id, k]) => localStorage.setItem("admin:" + id, k), [g.id, g.adminKey]);
+    await GA.p.goto(`${CLUB}/${g.id}/admin`);
+    await GA.p.locator(".side__nav button", { hasText: "メニュー" }).click();
+    await GA.p.locator(".remote-shop li", { hasText: "フランク" }).locator("button:has-text('レジに追加')").click();
+    await GA.p.locator(".menu-row", { hasText: "フランク" }).waitFor({ timeout: 10000 });
+    check((await GA.p.locator(".menu-row", { hasText: "フランク" }).textContent()).includes("配達・テック部E2E"), "管理画面: テック部のフランクを「配達メニュー」として追加できる");
+    const gBefore = (await call(CLUB, `/api/shops/${g.id}/admin/summary`, g.adminKey)).data.sales;
+    await R.p.goto(`${CLUB}/${g.id}/register`);
+    await R.p.locator(".menu-card__main", { hasText: "フランク" }).waitFor({ timeout: 10000 });
+    check((await R.p.locator(".menu-card", { hasText: "フランク" }).textContent()).includes("配達・テック部E2E"), "Grok のレジに「配達・テック部E2E フランク」が並ぶ");
+    await R.p.locator(".menu-card__main", { hasText: "たこ焼き" }).click();
+    await R.p.locator(".menu-card__main", { hasText: "フランク" }).click();
+    const payText = await R.p.locator(".pay").textContent();
+    check(payText.includes("300"), "レジの合計はたこ焼き300円だけ（配達のフランクは入らない）");
+    check((await R.p.locator(".remote-note").textContent()).includes("200円"), "「配達 200円はこの会計に入りません」と出る");
+    await R.p.locator(".ticket-panel .tk-grid button").first().click();
+    await R.p.keyboard.type("1000");
+    await R.p.keyboard.press("Enter");
+    await R.p.locator(".done__delivery-no").waitFor({ timeout: 10000 });
+    const doneAll = await R.p.locator(".done").textContent();
+    check(doneAll.includes("700") && /配-\d+/.test(doneAll) && doneAll.includes("200円"), "会計完了: お釣り700円と、配達の番号・200円が出る");
+    await K.p.locator(".kcard--delivery", { hasText: "フランク" }).waitFor({ timeout: 10000 });
+    check(true, "テック部の厨房に、フランクの配達依頼が届く");
+    const gAfter = (await call(CLUB, `/api/shops/${g.id}/admin/summary`, g.adminKey)).data.sales;
+    check(gAfter - gBefore === 300, `Grok の売上はたこ焼きの300円だけ増える（${gAfter - gBefore}円）`);
+    const rb2 = (await call(CLUB, "/api/hub/board", courierKey)).data.deliveries.find((d) => d.status === "open" && d.placeName === "GrokE2E");
+    if (rb2) await call(CLUB, `/api/hub/deliveries/${rb2.id}/cancel`, courierKey, {});
+
     // ---------- 7. 取り消し・ほかの届け先 ----------
     const o2 = await call(CLUB, "/api/hub/order", placeKey, { id: crypto.randomUUID(), lines: [{ shopId: t.id, itemId: yaki.id, qty: 1 }] });
-    check(o2.status === 200 && o2.data.delivery.no === 3, "番号は日ごとの通し番号（配-3）");
+    check(o2.status === 200 && o2.data.delivery.no === 4, "番号は日ごとの通し番号（配-4）");
     const seeOther = (await call(CLUB, "/api/hub/board", otherPlaceKey)).data;
     check(seeOther.deliveries.length === 0, "ほかの届け先の係には、この届け先の配達は見えない");
     check((await call(CLUB, `/api/hub/deliveries/${o2.data.delivery.id}/cancel`, otherPlaceKey, {})).status === 404, "ほかの届け先からは取り消せない");
     check((await call(CLUB, `/api/hub/deliveries/${o2.data.delivery.id}/cancel`, placeKey, {})).status === 200, "頼んだ届け先からは取り消せる");
     tsum = (await call(CLUB, `/api/shops/${t.id}/admin/summary`, t.adminKey)).data;
-    check(tsum.sales === 650 && tsum.cancelledCount === 2, "取り消した配達は売上に入らない（キャンセル2件）");
+    check(tsum.sales === 650 && tsum.cancelledCount === 3, "取り消した配達は売上に入らない（キャンセル3件）");
     const bad = await call(CLUB, "/api/hub/order", placeKey, { id: crypto.randomUUID(), lines: [{ shopId: "zzzzzzzzzz", itemId: "x", qty: 1 }] });
     check(bad.status === 400, "参加していない店の商品は頼めない");
   } catch (e) {

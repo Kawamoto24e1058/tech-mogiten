@@ -47,7 +47,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [received, setReceived] = useState("");
   const [ticketChoice, setTicketChoice] = useState<number | "none" | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]} | null>(null);
+  const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]; local: boolean; delivery?: { no: number; total: number } | null; deliveryError?: string } | null>(null);
   const [undoing, setUndoing] = useState(false);
   const [undoError, setUndoError] = useState("");
   // 使用中の札を押したとき（札が手元に戻っている＝渡し済みのはず）の確認
@@ -73,12 +73,16 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const ticket = typeof ticketChoice === "number" ? ticketChoice : null;
   const label = (t: number | null) => ticketLabel(shop?.prefix ?? "", t);
 
-  const lines = cart
+  const allLines = cart
     .map((c) => {
       const m = menu.find((x) => x.id === c.itemId);
-      return m ? { ...c, name: m.name, price: m.price, soldOut: m.soldOut, stock: m.stock } : null;
+      return m ? { ...c, name: m.name, price: m.price, soldOut: m.soldOut, stock: m.stock, remote: m.remote ?? null } : null;
     })
     .filter((x): x is NonNullable<typeof x> => x != null && x.qty > 0);
+  // 配達メニュー（ほかの店の商品）は、このレジの合計に入れない。届けたときに配達係に払う
+  const lines = allLines.filter((l) => !l.remote);
+  const remoteLines = allLines.filter((l) => l.remote);
+  const remoteTotal = remoteLines.reduce((s, l) => s + l.price * l.qty, 0);
   // まとめ買い割引（管理画面で設定）は自動でつける。サーバーでも同じ計算をする
   const autoDiscounts = discountLines(lines, snapshot?.discounts ?? []);
   const total = linesTotal(lines) + linesTotal(autoDiscounts);
@@ -86,7 +90,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const receivedNum = Number(received || 0);
   const shortBy = total - receivedNum;
   const change = receivedNum - total;
-  const itemCount = lines.reduce((s, l) => s + l.qty, 0);
+  const itemCount = allLines.reduce((s, l) => s + l.qty, 0);
   const qtyOf = (id: string) => cart.find((c) => c.itemId === id)?.qty ?? 0;
   /** 残り数があるなら、それ以上は選べない */
   const atLimit = (id: string, stock: number | null) => stock != null && qtyOf(id) >= stock;
@@ -108,22 +112,52 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   const ticketOk = ticketChoice !== null;
   // 札を選ぶだけの画面は出さない（広い画面は左、スマホは上で選ぶ）。選び忘れたら「会計を確定」が押せないので気づける
-  const canConfirm = lines.length > 0 && total >= 0 && received !== "" && receivedNum >= total && ticketOk;
+  const canConfirm = lines.length > 0
+    ? total >= 0 && received !== "" && receivedNum >= total && ticketOk
+    : remoteLines.length > 0;
 
   /** 会計を確定する */
-  const finish = (rec: number) => {
-    if (!(lines.length > 0 && total >= 0 && rec >= total && ticketOk)) return;
+  const [sending, setSending] = useState(false);
+  const finish = async (rec: number) => {
+    const local = lines.length > 0;
+    if (local && !(total >= 0 && rec >= total && ticketOk)) return;
+    if (!local && remoteLines.length === 0) return;
+    if (sending) return;
     buzz();
     const id = uuid();
-    conn.send({
-      kind: "createOrder",
-      order: { id, ticket, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })), received: rec, createdAt: Date.now() },
-    });
-    setDone({ ticket: label(ticket), change: rec - total, orderId: id, cart });
+    const localCart = cart.filter((c) => lines.some((l) => l.itemId === c.itemId));
+    const remoteCart = cart.filter((c) => remoteLines.some((l) => l.itemId === c.itemId));
+    if (local) {
+      conn.send({
+        kind: "createOrder",
+        order: { id, ticket, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })), received: rec, createdAt: Date.now() },
+      });
+    }
+    // 配達メニューの分は、配達センター経由でその店に頼む
+    let delivery: { no: number; total: number } | null = null;
+    let deliveryError = "";
+    if (remoteLines.length > 0) {
+      setSending(true);
+      try {
+        const r = await api<{ delivery: { no: number; total: number } }>("/api/hub/order", code, {
+          method: "POST",
+          headers: { "x-hub-shop": shopId },
+          body: JSON.stringify({ id: uuid(), lines: remoteLines.map((l) => ({ shopId: l.remote!.shopId, itemId: l.remote!.itemId, qty: l.qty })) }),
+        });
+        delivery = { no: r.delivery.no, total: r.delivery.total };
+      } catch (e) {
+        deliveryError = e instanceof Error ? e.message : "配達を頼めませんでした";
+      } finally {
+        setSending(false);
+      }
+    }
+    setDone({ ticket: local ? label(ticket) : "", change: local ? rec - total : 0, orderId: local ? id : "", cart: localCart, local, delivery, deliveryError });
     setUndoError("");
     reset();
+    // 配達を頼めなかったときは、配達の商品をカゴに戻しておく（もう一度押せるように）
+    if (deliveryError) setCart(remoteCart);
   };
-  const confirm = () => canConfirm && finish(receivedNum);
+  const confirm = () => { if (canConfirm) void finish(receivedNum); };
 
   /** お預かりの入力（テンキー・PCのキーボード共通） */
   const typeKey = (k: string) => setReceived((r) => (r + k).replace(/^0+(?=\d)/, "").slice(0, 7));
@@ -227,16 +261,28 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       <Page shop={shop} className="page--work">
         {appbar}
         <main className="done">
-          <p className="done__lead">この札を渡してください</p>
-          <div className="done__ticket">{done.ticket}</div>
-          <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
-          <Breakdown amount={done.change} />
+          {done.local && (
+            <>
+              <p className="done__lead">この札を渡してください</p>
+              <div className="done__ticket">{done.ticket}</div>
+              <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
+              <Breakdown amount={done.change} />
+            </>
+          )}
+          {done.delivery && (
+            <div className="done__delivery" role="status">
+              <span>配達を頼みました。お客さんに伝えてください</span>
+              <b className="done__delivery-no">配-{done.delivery.no}</b>
+              <span>この店の前で待ってもらい、届いたら <b>{yen(done.delivery.total)}</b> を配達係に払います</span>
+            </div>
+          )}
+          {done.deliveryError && <Banner kind="error">配達を頼めませんでした: {done.deliveryError}（配達の商品はカゴに戻しました）</Banner>}
           {status !== "online" && (
             <Banner kind="warn">オフラインのため、まだ厨房に届いていません。口頭で伝えてください（電波が戻ると自動で送られます）。</Banner>
           )}
           <Btn variant="accent" big onClick={() => setDone(null)}>次のお客さん</Btn>
           {undoError && <Banner kind="error">{undoError}</Banner>}
-          <button className="link done__undo" onClick={() => void undo()} disabled={undoing}>{undoing ? "取り消しています…" : "間違えた（この会計を取り消して入力し直す）"}</button>
+          {done.local && <button className="link done__undo" onClick={() => void undo()} disabled={undoing}>{undoing ? "取り消しています…" : "間違えた（この会計を取り消して入力し直す）"}</button>}
         </main>
         {historyModal}
       </Page>
@@ -275,7 +321,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
               onClick={() => add(m.id, 1)}
               aria-label={`${m.name} ${yen(m.price)}${m.soldOut ? " 売り切れ" : ""}${low ? ` 残り${m.stock}` : ""}${qty ? ` 現在${qty}個` : ""}`}
             >
-              <span className="menu-card__name">{m.name}</span>
+              <span className="menu-card__name">{m.remote && <small className="remote-tag">配達・{m.remote.shopName}</small>}{m.name}</span>
               <span className="menu-card__foot">
                 <span className="menu-card__price">{m.soldOut ? "売り切れ" : discount ? `−${yen(-m.price)}` : yen(m.price)}</span>
                 {low && <span className={`menu-card__stock ${limit ? "is-limit" : ""}`}>{limit ? "これ以上ありません" : `残り${m.stock}`}</span>}
@@ -360,7 +406,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         </div>
       )}
       <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
-        {lines.length === 0 ? "商品を選んでください" : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "① 札を押してください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : `札 ${ticketText} で会計を確定`}
+        {lines.length === 0 ? (remoteLines.length > 0 ? (sending ? "頼んでいます…" : "配達を頼む") : "商品を選んでください") : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "① 札を押してください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : `札 ${ticketText} で会計を確定${remoteLines.length > 0 ? "（配達も頼む）" : ""}`}
       </Btn>
     </section>
   );
@@ -408,9 +454,9 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
             <section className="order-list" aria-label="注文内容">
               <div className="order-list__head">
                 <h2>注文 <span className="muted">{itemCount}点</span></h2>
-                {lines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
+                {allLines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
               </div>
-              {lines.length === 0 ? (
+              {allLines.length === 0 ? (
                 <p className="hint">メニューを押すと追加されます。</p>
               ) : (
                 <ul>
@@ -432,8 +478,20 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
                       <span className="order-list__sub">−{yen(-d.price * d.qty)}</span>
                     </li>
                   ))}
+                  {remoteLines.map((l) => (
+                    <li key={l.itemId} className="order-list__remote">
+                      <span className="order-list__name"><small className="remote-tag">配達・{l.remote!.shopName}</small>{l.name}</span>
+                      <span className="stepper">
+                        <button onClick={() => add(l.itemId, -1)} aria-label={`${l.name}を1つ減らす`}><IconMinus size={18} /></button>
+                        <b>{l.qty}</b>
+                        <button onClick={() => add(l.itemId, 1)} aria-label={`${l.name}を1つ増やす`}><IconPlus size={18} /></button>
+                      </span>
+                      <span className="order-list__sub">{yen(l.price * l.qty)}</span>
+                    </li>
+                  ))}
                 </ul>
               )}
+              {remoteLines.length > 0 && <p className="remote-note">配達 <b>{yen(remoteTotal)}</b> はこの会計に入りません（届けたときに配達係に払う）</p>}
             </section>
             {pay}
           </aside>
@@ -463,9 +521,12 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
               <span className="bottom-bar__count">{itemCount ? `${itemCount}点` : "未選択"}</span>
               <span className="bottom-bar__total" aria-live="polite"><Money value={total} /></span>
               {discountText && <span className="bottom-bar__discount">{discountText}</span>}
-              {lines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
+              {remoteLines.length > 0 && <span className="bottom-bar__discount">＋配達 {yen(remoteTotal)}（届けたときに払う）</span>}
+              {allLines.length > 0 && <button className="link" onClick={() => setConfirmClear(true)}>全部消す</button>}
             </div>
-            <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ</Btn>
+            {lines.length === 0 && remoteLines.length > 0
+              ? <Btn variant="accent" big disabled={sending} onClick={() => void finish(0)}>{sending ? "頼んでいます…" : "配達を頼む"}</Btn>
+              : <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ</Btn>}
           </div>
         </>
       ) : (

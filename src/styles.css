@@ -1837,3 +1837,16 @@ a.appbar__home:hover { background: #f2f2f3; }
 .hub-embed-head div { display: grid; gap: 2px; }
 .hub-embed-head b { font-size: 1.1rem; }
 .hub-embed-head span { color: var(--muted); font-size: 0.88rem; }
+
+/* 配達メニュー（ほかの店の商品）。レジの合計には入らない */
+.remote-tag { display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 4px; background: #18181b; color: #fff; font-size: 0.7rem; font-weight: 700; vertical-align: 2px; white-space: nowrap; }
+.menu-card__name .remote-tag { display: block; width: fit-content; margin: 0 0 4px; }
+.order-list__remote .order-list__name { display: flex; align-items: center; flex-wrap: wrap; }
+.remote-note { margin: 6px 0 0; padding: 6px 10px; border-radius: 8px; background: #f4f4f5; font-size: 0.82rem; color: #3f3f46; }
+.remote-shop { display: grid; gap: 6px; }
+.remote-shop__name { display: flex; align-items: center; gap: 6px; }
+.done__delivery { display: grid; justify-items: center; gap: 4px; padding: 16px 20px; border-radius: 12px; background: #18181b; color: #fff; text-align: center; }
+.done__delivery-no { font-size: 3rem; line-height: 1.1; letter-spacing: -0.03em; }
+.menu-card__name:has(.remote-tag) { flex-wrap: wrap; }
+.menu-card__name .remote-tag { flex-basis: 100%; max-width: fit-content; }
+.remote-shop .setup-list li > .tag { flex: 0 0 auto; }

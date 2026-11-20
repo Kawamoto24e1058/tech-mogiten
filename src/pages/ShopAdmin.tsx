@@ -443,7 +443,7 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
             <li key={m.id}>
               <button className="menu-row" onClick={() => open(m)}>
                 <i className="swatch swatch--lg" style={{ background: menuColor(m, i).solid }} aria-hidden />
-                <span className="menu-row__name">{m.name}</span>
+                <span className="menu-row__name">{m.name}{m.remote && <small className="remote-tag">配達・{m.remote.shopName}</small>}</span>
                 {m.stock != null && <span className={`menu-row__stock ${m.stock <= 10 ? "is-low" : ""}`}>残り{m.stock}</span>}
                 <span className="menu-row__price">{m.price < 0 ? `−${yen(-m.price)}` : yen(m.price)}</span>
                 <span className="menu-row__edit" aria-hidden>編集 ›</span>
@@ -463,6 +463,8 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
         <Btn variant="accent" onClick={() => open("new")}>＋ 商品を追加</Btn>
         <p className="hint">商品を押すと、名前・価格・残り数・並び順を変えられます。価格を変えても、すでに会計した注文の金額は変わりません。「2本で300円」のような割引は、下の「まとめ買い割引」で設定すると自動でつきます。</p>
       </section>
+
+      {CLUB && <RemoteMenuPanel st={st} mutate={mutate} />}
 
       <DiscountPanel st={st} mutate={mutate} />
 
@@ -526,6 +528,50 @@ function MenuTab({ st, mutate }: { st: AdminState; mutate: Mutate }) {
 }
 
 /** まとめ買い割引。対象の商品が合わせて N 個になるごとに M 円引く（レジで自動） */
+/**
+ * 配達メニュー（テック部版）: ほかの店の商品を、この店のレジのメニューに「配達」として並べる。
+ * レジで押すと、その店に配達を頼む（お金は届けたときに配達係へ。この店の会計・売上には入らない）
+ */
+function RemoteMenuPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
+  type Other = { id: string; name: string; color: string; menu: MenuItem[]; error?: string };
+  const [others, setOthers] = useState<Other[] | null>(null);
+  const [error, setError] = useState("");
+  const id = st.shop.id;
+  useEffect(() => {
+    const key = localStorage.getItem(adminKey(id)) ?? "";
+    api<{ shops: Other[] }>("/api/hub/menu", key, { headers: { "x-hub-shop": id } })
+      .then((r) => setOthers(r.shops))
+      .catch((e) => setError(e instanceof ApiError && e.status === 403 ? "この店は、まだ配達センターに参加していません。テック部の配達センターで店を足してもらうと使えます。" : e instanceof Error ? e.message : "読み込めません"));
+  }, [id]);
+  const added = (shopId: string, itemId: string) => st.menu.some((m) => m.remote?.shopId === shopId && m.remote.itemId === itemId);
+  return (
+    <section className="panel">
+      <h3 className="panel__title">配達メニュー</h3>
+      <p className="hint">ほかの店の商品を、この店のレジに「配達」として並べます。レジで押すとその店の厨房に配達の依頼が届き、この店の店先に届きます。<b>お金は届けたときに配達係へ</b>払うので、この店の会計・売上には入りません。</p>
+      {error && <Banner kind="info">{error}</Banner>}
+      {!others && !error && <p className="hint">読み込んでいます…</p>}
+      {others?.map((s) => (
+        <div key={s.id} className="remote-shop">
+          <b className="remote-shop__name"><i className="swatch" style={{ background: s.color }} aria-hidden />{s.name}</b>
+          {s.error && <p className="error">{s.error}</p>}
+          <ul className="setup-list">
+            {s.menu.map((m) => (
+              <li key={m.id}>
+                <span>{m.name}</span>
+                <b>{yen(m.price)}</b>
+                {added(s.id, m.id)
+                  ? <span className="tag">追加済み</span>
+                  : <Btn onClick={() => void mutate("/menu", "POST", { name: m.name, price: m.price, remote: { shopId: s.id, itemId: m.id, shopName: s.name } }, `「${m.name}（配達）」を追加しました`)}>レジに追加</Btn>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <p className="hint">外すときは、上のメニューで商品を押して「削除」してください。値段はその店の値段で計算されます。</p>
+    </section>
+  );
+}
+
 function DiscountPanel({ st, mutate }: { st: AdminState; mutate: Mutate }) {
   const [editing, setEditing] = useState<DiscountRule | "new" | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);

@@ -162,6 +162,7 @@ export class ShopDO extends DurableObject<Env> {
     if (!failCols.includes("ip")) this.sql.exec("ALTER TABLE auth_fail ADD COLUMN ip TEXT");
     // 配達の注文（テック部版）。お金は届けたときに受け取り、配達係から受け取ったら settled_at を入れる
     if (!orderCols.includes("delivery")) this.sql.exec("ALTER TABLE orders ADD COLUMN delivery TEXT");
+    if (!menuCols.includes("remote")) this.sql.exec("ALTER TABLE menu ADD COLUMN remote TEXT");
   }
 
   // ---------- 設定 ----------
@@ -241,9 +242,9 @@ export class ShopDO extends DurableObject<Env> {
     for (const [day, amt] of Object.entries(b.floats ?? {})) if (/^\d{4}-\d{2}-\d{2}$/.test(day)) this.set(`float:${day}`, String(Math.floor(Number(amt)) || 0));
     b.menu.forEach((x, i) => {
       this.sql.exec(
-        "INSERT INTO menu (id, name, price, sold_out, sort, active, stock, color, cost) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+        "INSERT INTO menu (id, name, price, sold_out, sort, active, stock, color, cost, remote) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
         String(x.id), String(x.name).slice(0, 30), Math.floor(Number(x.price)) || 0, x.soldOut ? 1 : 0, Number(x.sort ?? i + 1) || i + 1,
-        x.stock ?? null, x.color ?? null, x.cost ?? null,
+        x.stock ?? null, x.color ?? null, x.cost ?? null, x.remote ? JSON.stringify(x.remote) : null,
       );
     });
     let n = 0;
@@ -390,13 +391,14 @@ export class ShopDO extends DurableObject<Env> {
 
   private menu(): MenuItem[] {
     return this.sql
-      .exec("SELECT id, name, price, sold_out, sort, stock, color, cost FROM menu WHERE active = 1 ORDER BY sort, rowid")
+      .exec("SELECT id, name, price, sold_out, sort, stock, color, cost, remote FROM menu WHERE active = 1 ORDER BY sort, rowid")
       .toArray()
       .map((r) => ({
         id: r.id as string, name: r.name as string, price: r.price as number, soldOut: r.sold_out === 1, sort: r.sort as number,
         stock: (r.stock as number | null) ?? null,
         color: (r.color as string | null) ?? null,
         cost: (r.cost as number | null) ?? null,
+        remote: r.remote ? JSON.parse(r.remote as string) : null,
       }));
   }
 
@@ -547,7 +549,10 @@ export class ShopDO extends DurableObject<Env> {
   private createOrder(input: NewOrderInput, delivery?: DeliveryInfo): string | undefined {
     if (typeof input?.id !== "string" || input.id.length < 8 || input.id.length > 64) throw new HttpError(400, "注文IDが不正です");
     if (this.order(input.id)) return; // 再送された注文は無視する
-    const lines = priceLines(this.menu(), this.discounts(), Array.isArray(input.lines) ? input.lines : []);
+    // 配達メニュー（ほかの店の商品）は、この店の注文には入れない（配達センター経由でその店に頼む）
+    const menuNow = this.menu();
+    const remoteIds = new Set(menuNow.filter((x) => x.remote).map((x) => x.id));
+    const lines = priceLines(menuNow, this.discounts(), (Array.isArray(input.lines) ? input.lines : []).filter((l) => !remoteIds.has(l?.itemId)));
     if (lines.length === 0) throw new HttpError(400, "注文が空です");
     const total = linesTotal(lines);
     if (total < 0) throw new HttpError(400, "合計がマイナスです。割引の数を確認してください");
@@ -832,7 +837,7 @@ export class ShopDO extends DurableObject<Env> {
       await this.authorize(req, "staff");
       const sub = path.slice("/delivery".length);
       if (sub === "/menu" && m === "GET") {
-        return json({ shop: this.shopPublic(), menu: this.menu().filter((x) => x.price > 0), discounts: this.discounts().filter((d) => d.enabled) });
+        return json({ shop: this.shopPublic(), menu: this.menu().filter((x) => x.price > 0 && !x.remote), discounts: this.discounts().filter((d) => d.enabled) });
       }
       const b = await this.body<{ id?: string; ids?: string[]; lines?: { itemId: string; qty: number }[]; delivery?: DeliveryInfo }>(req);
       if (sub === "/order" && m === "POST") {
@@ -1057,7 +1062,7 @@ export class ShopDO extends DurableObject<Env> {
     }
 
     if (p === "/menu" && m === "POST") {
-      const b = await this.body<{ name: string; price: number; stock?: number | null; color?: string | null; cost?: number | null }>(req);
+      const b = await this.body<{ name: string; price: number; stock?: number | null; color?: string | null; cost?: number | null; remote?: { shopId: string; itemId: string; shopName: string } | null }>(req);
       const name = String(b.name ?? "").trim().slice(0, 30);
       const price = Math.floor(Number(b.price));
       if (!name) throw new HttpError(400, "商品名を入力してください");
@@ -1066,8 +1071,12 @@ export class ShopDO extends DurableObject<Env> {
       const sort = (this.sql.exec<{ m: number | null }>("SELECT MAX(sort) AS m FROM menu").one().m ?? 0) + 1;
       const id = crypto.randomUUID();
       const color = parseColor(b.color);
-      this.sql.exec("INSERT INTO menu (id, name, price, sort, stock, color, cost) VALUES (?, ?, ?, ?, ?, ?, ?)", id, name, price, sort, stock, color, parseCost(b.cost));
-      this.audit("menu.add", null, { id, name, price, stock });
+      const r = b.remote;
+      const remote = r && /^[a-z0-9]{1,16}$/.test(String(r.shopId)) && r.itemId
+        ? JSON.stringify({ shopId: String(r.shopId), itemId: String(r.itemId).slice(0, 64), shopName: String(r.shopName ?? "").slice(0, 30) })
+        : null;
+      this.sql.exec("INSERT INTO menu (id, name, price, sort, stock, color, cost, remote) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", id, name, price, sort, remote ? null : stock, color, parseCost(b.cost), remote);
+      this.audit("menu.add", null, { id, name, price, stock, remote: remote ? JSON.parse(remote) : undefined });
       this.broadcast();
       return json(this.adminState(day));
     }

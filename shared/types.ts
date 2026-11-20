@@ -12,6 +12,8 @@ export interface MenuItem {
   color: string | null;
   /** 原価（1個あたり・任意）。利益の計算に使う */
   cost?: number | null;
+  /** 配達メニュー（テック部版）: ほかの店の商品。レジで押すと、その店に配達を頼む（この店の売上・会計には入らない） */
+  remote?: { shopId: string; itemId: string; shopName: string } | null;
 }
 
 /** 機材のレンタル代など、売れた数に関係なくかかる費用 */
