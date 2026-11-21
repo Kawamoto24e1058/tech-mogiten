@@ -869,8 +869,13 @@ export class ShopDO extends DurableObject<Env> {
     }
     if (path === "/history" && m === "GET") {
       await this.authorize(req, "staff");
+      // 一覧は新しい順に300件まで。合計は件数の上限に関係なく、今日の全件から出す（管理画面の売上と同じ数字）
       const orders = this.sql.exec("SELECT * FROM orders WHERE day = ? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 300", today).toArray().map((r) => this.rowToOrder(r));
-      return json({ orders, serverTime: Date.now(), cancelWindowMs: STAFF_CANCEL_WINDOW_MS });
+      const t = this.sql.exec<{ cnt: number; n: number; sales: number }>(
+        "SELECT COUNT(*) AS cnt, SUM(CASE WHEN status != 'cancelled' THEN 1 ELSE 0 END) AS n, SUM(CASE WHEN status != 'cancelled' THEN total ELSE 0 END) AS sales FROM orders WHERE day = ? AND deleted_at IS NULL",
+        today,
+      ).one();
+      return json({ orders, totals: { all: Number(t.cnt ?? 0), count: Number(t.n ?? 0), sales: Number(t.sales ?? 0) }, serverTime: Date.now(), cancelWindowMs: STAFF_CANCEL_WINDOW_MS });
     }
     let hs: RegExpMatchArray | null;
     if ((hs = path.match(/^\/history\/([^/]+)\/cancel$/)) && m === "POST") {

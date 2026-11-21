@@ -18,7 +18,7 @@ export function RegisterHistory({
   pending: Order[];
   onClose: () => void;
 }) {
-  const [data, setData] = useState<{ orders: Order[]; serverTime: number; cancelWindowMs: number } | null>(null);
+  const [data, setData] = useState<{ orders: Order[]; totals?: { all: number; count: number; sales: number }; serverTime: number; cancelWindowMs: number } | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Order | null>(null);
   const [reason, setReason] = useState("");
@@ -108,8 +108,9 @@ export function RegisterHistory({
   return (
     <Modal title="今日の会計" onClose={onClose}>
       <p className="hint">
-        {valid.length}件・{yen(valid.reduce((s, o) => s + o.total, 0))}
+        {data?.totals ? data.totals.count : valid.length}件・{yen(data?.totals ? data.totals.sales : valid.reduce((s, o) => s + o.total, 0))}
         {pending.length > 0 && `（ほかに未送信 ${pending.length}件）`}。会計から5分以内なら、押して取り消せます。
+        {data?.totals && data.totals.all > orders.length && `（一覧は新しい${orders.length}件だけ表示しています）`}
       </p>
       {error && <Banner kind="warn">{error}</Banner>}
       <ul className="order-rows history-list">
