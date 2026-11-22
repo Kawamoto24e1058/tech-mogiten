@@ -41,6 +41,12 @@ export function yen(n: number): string {
   return `${n.toLocaleString("ja-JP")}円`;
 }
 
+/** 札のない注文の呼び名。受付番号（注文の通し番号）を使う。まだ送っていない注文は番号がない */
+export function orderLabel(prefix: string, o: { ticket: number | null; seq: number }): string {
+  if (o.ticket != null) return ticketLabel(prefix, o.ticket);
+  return o.seq > 0 ? `#${o.seq}` : "送信中";
+}
+
 export function ticketLabel(prefix: string, ticket: number | null): string {
   if (ticket == null) return "札なし";
   return prefix ? `${prefix}-${ticket}` : String(ticket);

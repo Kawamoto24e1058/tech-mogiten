@@ -45,7 +45,10 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [cart, setCartRaw] = useState<CartLine[]>(() => load(draftKey, []));
   const [step, setStep] = useState<"order" | "pay">("order");
   const [received, setReceived] = useState("");
-  const [ticketChoice, setTicketChoice] = useState<number | "none" | null>(null);
+  const [ticketChoice, setTicketChoiceRaw] = useState<number | "none" | null>(null);
+  // スマホの札の欄（ふだんは畳む）。札を押したら閉じる
+  const [showTickets, setShowTickets] = useState(false);
+  const setTicketChoice = (v: number | "none" | null) => { setTicketChoiceRaw(v); if (v !== null) setShowTickets(false); };
   const [confirmClear, setConfirmClear] = useState(false);
   const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]; local: boolean; delivery?: { no: number; total: number } | null; deliveryError?: string } | null>(null);
   const [undoing, setUndoing] = useState(false);
@@ -110,7 +113,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     setStep("order");
   };
 
-  const ticketOk = ticketChoice !== null;
+  // 札は任意（選ばなければ札なし。受付番号 #N で呼ぶ）
+  const ticketOk = true;
   // 札を選ぶだけの画面は出さない（広い画面は左、スマホは上で選ぶ）。選び忘れたら「会計を確定」が押せないので気づける
   const canConfirm = lines.length > 0
     ? total >= 0 && received !== "" && receivedNum >= total && ticketOk
@@ -256,6 +260,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     );
   }
 
+  const doneSeq = done ? (orders.find((o) => o.id === done.orderId)?.seq ?? -1) : -1;
   if (done) {
     return (
       <Page shop={shop} className="page--work">
@@ -263,8 +268,18 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         <main className="done">
           {done.local && (
             <>
-              <p className="done__lead">この札を渡してください</p>
-              <div className="done__ticket">{done.ticket}</div>
+              {done.ticket && done.ticket !== "札なし" ? (
+                <>
+                  <p className="done__lead">この札を渡してください</p>
+                  <div className="done__ticket">{done.ticket}</div>
+                </>
+              ) : (
+                <>
+                  <p className="done__lead">受付番号をお客さんに伝えてください（呼び出し画面に出ます）</p>
+                  <div className="done__ticket">{doneSeq > 0 ? `#${doneSeq}` : "…"}</div>
+                  {doneSeq <= 0 && <p className="hint">番号をもらっています…（電波がないときは、つながると番号が出ます）</p>}
+                </>
+              )}
               <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
               <Breakdown amount={done.change} />
             </>
@@ -292,7 +307,6 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const banners = (
     <div className="banners">
       <Notices notices={state.notices} onDismiss={(id) => conn.dismiss(id)} />
-      {snapshot.registerCount > 1 && <Banner kind="warn">レジが{snapshot.registerCount}台で開かれています。1台だけにしてください。</Banner>}
       {freeCount === 0 ? (
         <Banner kind="error">番号札がすべて使用中です。渡し終わった札を厨房で「渡した」にしてください。</Banner>
       ) : freeCount <= LOW_TICKETS ? (
@@ -339,7 +353,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     </section>
   );
 
-  const ticketText = ticketChoice === "none" ? "札なし" : ticket != null ? label(ticket) : "未選択";
+  const ticketText = ticket != null ? label(ticket) : "なし";
 
   /** 札をずらっと並べる。手に取った札の番号を押せばよい（何も押さなければ、前の札の次の番号） */
   const ticketButtons = Array.from({ length: ticketCount }, (_, i) => i + 1).map((n) => {
@@ -366,9 +380,9 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   /** ① 札（左）。選んだ札を大きく出し、一覧からそのまま押し直せる */
   const ticketPanel = (
     <section className="ticket-panel" aria-label="番号札">
-      <h2 className="step-title"><span className="step__no">1</span>渡す札</h2>
+      <h2 className="step-title"><span className="step__no">1</span>渡す札<small className="muted">（任意）</small></h2>
       <div className={`ticket-panel__num ${ticket == null ? "is-none" : ""}`} aria-live="polite">{ticketText}</div>
-      <p className="ticket-panel__free">{ticket == null && ticketChoice !== "none" ? "↓ 渡す札の番号を押してください" : "間違えたら、別の番号を押す"}</p>
+      <p className="ticket-panel__free">{ticket == null ? "札を使うときだけ押す（押さなければ受付番号で呼びます）" : "間違えたら、別の番号を押す"}</p>
       <div className="tk-grid" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}</div>
       {noTicketButton}
     </section>
@@ -399,14 +413,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         ))}
         <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す"><IconBackspace size={24} /></button>
       </div>
-      {!wide && !ticketOk && (
-        <div className="ticket-bar ticket-bar--warn">
-          <span className="ticket-bar__label">渡す札を押してください</span>
-          <div className="tk-strip" role="group" aria-label="札の番号">{ticketButtons}{noTicketButton}</div>
-        </div>
-      )}
       <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
-        {lines.length === 0 ? (remoteLines.length > 0 ? (sending ? "頼んでいます…" : "配達を頼む") : "商品を選んでください") : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "① 札を押してください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : `札 ${ticketText} で会計を確定${remoteLines.length > 0 ? "（配達も頼む）" : ""}`}
+        {lines.length === 0 ? (remoteLines.length > 0 ? (sending ? "頼んでいます…" : "配達を頼む") : "商品を選んでください") : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "① 札を押してください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : `${ticket != null ? `札 ${ticketText} で` : ""}会計を確定${remoteLines.length > 0 ? "（配達も頼む）" : ""}`}
       </Btn>
     </section>
   );
@@ -510,9 +518,11 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       {step === "order" ? (
         <>
           <main className="register">
-            <div className="ticket-bar">
-              <span className="ticket-bar__label">渡す札 <b className="ticket-bar__num">{ticketText}</b></span>
-              <div className="tk-strip" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}{noTicketButton}</div>
+            {/* スマホ: 札は任意なので畳んでおく。使うときだけ開いて番号を押す */}
+            <div className={`ticket-bar ticket-bar--compact ${showTickets ? "is-open" : ""}`}>
+              <span className="ticket-bar__label">札 <b className="ticket-bar__num">{ticketText}</b>{ticket == null && <small>（受付番号で呼ぶ）</small>}</span>
+              <button className="link" onClick={() => setShowTickets(!showTickets)} aria-expanded={showTickets}>{showTickets ? "閉じる" : ticket != null ? "変える" : "札を使う"}</button>
+              {showTickets && <div className="tk-strip" ref={ticketListRef} role="group" aria-label="札の番号">{ticketButtons}{noTicketButton}</div>}
             </div>
             {menuGrid}
           </main>

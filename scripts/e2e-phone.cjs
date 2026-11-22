@@ -1,0 +1,56 @@
+// スマホのレジ（客引きなど）の確認: 2台で注文→札なしで会計→受付番号→厨房→呼び出し。npm run dev:club を起動した状態で  node scripts/e2e-phone.cjs
+const { chromium, devices } = require("playwright");
+const C = "http://localhost:5174";
+const out = require("node:os").tmpdir() + "/";
+const call = async (path, key, body, method) => { const r = await fetch(C + path, { method: method ?? (body === undefined ? "GET" : "POST"), headers: { "content-type": "application/json", ...(key ? { authorization: "Bearer " + key } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }); return r.json().catch(() => ({})); };
+let ng = 0; const check = (c, m) => { console.log(`${c ? "OK  " : "NG  "} ${m}`); if (!c) ng++; };
+(async () => {
+  const s = await call("/api/shops", null, { name: "Grok", color: "#c2410c", ticketCount: 20, password: "grok-pass-123" });
+  for (const [n, p] of [["焼き鳥 たれ", 100], ["焼き鳥 しお", 100], ["小籠包", 100]]) await call(`/api/shops/${s.id}/admin/menu`, s.adminKey, { name: n, price: p });
+  const b = await chromium.launch(); const errs = [];
+  const phone = async () => { const ctx = await b.newContext({ ...devices["iPhone 13"] }); const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(e.message)); await p.addInitScript(([id, k]) => localStorage.setItem("code:" + id, k), [s.id, s.staffKey]); return p; };
+  const p1 = await phone(); const p2 = await phone();
+  await p1.goto(`${C}/${s.id}/register`); await p2.goto(`${C}/${s.id}/register`);
+  await p1.waitForTimeout(2000);
+  check(await p1.locator("text=台で開かれています").count() === 0, "スマホ2台でレジを開いても警告が出ない");
+  await p1.screenshot({ path: out + "t-order.png" });
+  await p1.locator(".menu-card__main", { hasText: "焼き鳥 たれ" }).click();
+  await p1.locator(".menu-card__main", { hasText: "焼き鳥 たれ" }).click();
+  await p1.locator(".menu-card__main", { hasText: "小籠包" }).click();
+  await p1.screenshot({ path: out + "t-order2.png" });
+  await p1.click("text=お会計へ");
+  await p1.locator(".chip", { hasText: "500円" }).click();
+  const btn = (await p1.locator(".pay .btn--big").textContent()).trim();
+  check(btn === "会計を確定", `札を選ばずに会計できる（ボタン: ${btn}）`);
+  await p1.screenshot({ path: out + "t-pay.png" });
+  await p1.locator(".pay .btn--big").click();
+  await p1.locator(".done__ticket", { hasText: "#" }).waitFor({ timeout: 8000 });
+  const no = (await p1.locator(".done__ticket").textContent()).trim();
+  check(/^#\d+$/.test(no), `受付番号が出る（${no}）`);
+  check((await p1.locator(".done").textContent()).includes("200"), "お釣り 200円");
+  await p1.screenshot({ path: out + "t-done.png" });
+  // 2台目で札あり
+  await p2.locator(".menu-card__main", { hasText: "焼き鳥 しお" }).click();
+  await p2.click("text=札を使う");
+  await p2.locator(".tk-strip button", { hasText: /^3$/ }).first().click();
+  check((await p2.locator(".ticket-bar__num").textContent()).trim() === "3", "札を使うときは「札を使う」から選べる");
+  await p2.click("text=お会計へ"); await p2.locator(".chip", { hasText: "ちょうど" }).click();
+  check((await p2.locator(".pay .btn--big").textContent()).includes("札 3 で会計を確定"), "札を選んだときは「札 3 で会計を確定」");
+  await p2.locator(".pay .btn--big").click(); await p2.locator(".done__ticket").waitFor();
+  // 厨房・呼び出し
+  const k = await (await b.newContext({ viewport: { width: 1280, height: 700 } })).newPage();
+  await k.addInitScript(([id, key]) => localStorage.setItem("code:" + id, key), [s.id, s.staffKey]);
+  await k.goto(`${C}/${s.id}/kitchen`); await k.waitForTimeout(2000);
+  const kt = await k.locator("body").textContent();
+  check(kt.includes(no) && kt.includes("焼き鳥 たれ"), `厨房に ${no} の注文が届く（2台から送っても届く）`);
+  check(await k.locator(".kcard").count() === 2, "厨房に2件（スマホ2台分）");
+  await k.locator(".kcard", { hasText: no }).locator("button:has-text('できた')").click();
+  const d = await (await b.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  await d.goto(`${C}/${s.id}/display`); await d.waitForTimeout(2500);
+  check((await d.locator("body").textContent()).includes(no), `呼び出し表示に ${no} が出る`);
+  const sum = await call(`/api/shops/${s.id}/admin/summary`, s.adminKey);
+  check(sum.orderCount === 2 && sum.sales === 400, `売上 2件・400円（${sum.orderCount}件・${sum.sales}円）`);
+  await call(`/api/shops/${s.id}/admin/shop/delete`, s.adminKey, { confirm: "Grok" });
+  check(errs.length === 0, "画面のエラーなし " + errs.slice(0, 2).join(" / "));
+  console.log(ng ? `${ng}件 失敗` : "すべて成功"); await b.close();
+})();

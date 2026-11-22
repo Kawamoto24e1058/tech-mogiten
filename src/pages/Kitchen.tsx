@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Order } from "../../shared/types";
-import { menuColor, ticketLabel, yen } from "../../shared/logic";
+import { menuColor, yen, orderLabel } from "../../shared/logic";
 import { AppBar, Btn, Banner, ConnBadge, Modal, Notices, Page, useIsWide, useNow, useWakeLock } from "../components/ui";
 import type { CSSProperties } from "react";
 import { useConnection, viewMenu, viewOrders } from "../sync";
@@ -47,7 +47,7 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
     }
     if (snapshot) seen.current = ids;
   }, [cookingIds, sound, snapshot]);
-  const label = (o: View) => (o.delivery ? `配-${o.delivery.no}` : ticketLabel(shop?.prefix ?? "", o.ticket));
+  const label = (o: View) => (o.delivery ? `配-${o.delivery.no}` : orderLabel(shop?.prefix ?? "", o));
   const set = (o: View, s: Tab) => conn.send({ kind: "setStatus", orderId: o.id, status: s });
   const handOver = (o: View) => {
     set(o, "handed");

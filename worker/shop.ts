@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import {
-  businessDay, holdsTicket, linesTotal, ordersCsv, priceLines, summarize, ticketLabel,
+  businessDay, holdsTicket, linesTotal, orderLabel, ordersCsv, priceLines, summarize, ticketLabel,
 } from "../shared/logic";
 import type {
   ClientMessage, Closing, DiscountRule, DisplaySnapshot, Expense, MenuItem, ShopExport, NewOrderInput, Op, Order, OrderStatus,
@@ -480,13 +480,13 @@ export class ShopDO extends DurableObject<Env> {
   private displaySnapshot(): DisplaySnapshot {
     const shop = this.shopPublic();
     const ready = this.sql
-      .exec<{ ticket: number; ready_at: number }>("SELECT ticket, ready_at FROM orders WHERE status = 'ready' AND ticket IS NOT NULL AND deleted_at IS NULL AND delivery IS NULL ORDER BY ready_at")
+      .exec<{ ticket: number | null; seq: number; ready_at: number }>("SELECT ticket, seq, ready_at FROM orders WHERE status = 'ready' AND deleted_at IS NULL AND delivery IS NULL ORDER BY ready_at")
       .toArray()
-      .map((r) => ({ ticket: ticketLabel(shop.prefix, r.ticket), readyAt: r.ready_at }));
+      .map((r) => ({ ticket: orderLabel(shop.prefix, r), readyAt: r.ready_at }));
     const cooking = this.sql
-      .exec<{ ticket: number }>("SELECT ticket FROM orders WHERE status = 'cooking' AND ticket IS NOT NULL AND deleted_at IS NULL ORDER BY created_at")
+      .exec<{ ticket: number | null; seq: number }>("SELECT ticket, seq FROM orders WHERE status = 'cooking' AND deleted_at IS NULL AND delivery IS NULL ORDER BY created_at")
       .toArray()
-      .map((r) => ticketLabel(shop.prefix, r.ticket));
+      .map((r) => orderLabel(shop.prefix, r));
     const menu = this.menu().filter((m) => m.price >= 0).map((m) => ({ name: m.name, price: m.price, soldOut: m.soldOut }));
     const deals = this.discounts().filter((d) => d.enabled).map((d) => `${d.name}：${d.every}個ごとに${d.off}円引き`);
     // 待ち時間の目安: 直近30分にできた注文の、会計からできるまでの時間（中央値）。3件未満なら出さない
