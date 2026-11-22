@@ -109,11 +109,22 @@ export function RegisterHistory({
   return (
     <Modal title="今日の会計" onClose={onClose}>
       <p className="hint">
-        {data?.totals ? data.totals.count : valid.length}件・{yen(data?.totals ? data.totals.sales : valid.reduce((s, o) => s + o.total, 0))}
-        {pending.length > 0 && `（ほかに未送信 ${pending.length}件）`}。会計から5分以内なら、押して取り消せます。
+        {data ? (
+          <>
+            {data.totals ? data.totals.count : valid.length}件・{yen(data.totals ? data.totals.sales : valid.reduce((s, o) => s + o.total, 0))}
+            {pending.length > 0 && `（ほかに未送信 ${pending.length}件）`}。会計から5分以内なら、押して取り消せます。
+          </>
+        ) : "送信済みの会計は、サーバーにつながるまで表示できません。"}
         {data?.totals && data.totals.all > orders.length && `（一覧は新しい${orders.length}件だけ表示しています）`}
       </p>
       {error && <Banner kind="warn">{error}</Banner>}
+      {pending.length > 0 && (
+        <Banner kind="info">
+          この端末の<b>未送信 {pending.length}件・{yen(pending.reduce((t, o) => t + o.total, 0))}</b>
+          {pending.some((o) => o.unpaid) && `（うち未会計 ${yen(pending.filter((o) => o.unpaid).reduce((t, o) => t + o.total, 0))}）`}
+          。つながると自動で送られ、売上に入ります。
+        </Banner>
+      )}
       <ul className="order-rows history-list">
         {pending.map((o) => row(o, true))}
         {orders.map((o) => row(o))}
