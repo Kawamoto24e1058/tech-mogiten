@@ -224,6 +224,7 @@ export function viewOrders(snapshot: ShopSnapshot | null, outbox: Pending[]): (O
         id: op.order.id, seq: --tempSeq, ticket: op.order.ticket, status: "cooking" as const, lines, total,
         received: op.order.received, change: op.order.received - total, createdAt: op.order.createdAt,
         readyAt: null, handedAt: null, cancelledAt: null, cancelReason: null, ticketReleased: false, day: "", pending: true,
+        unpaid: op.order.unpaid === true,
       };
       list.push(o);
       byId.set(o.id, o);
@@ -248,6 +249,22 @@ export function viewOrders(snapshot: ShopSnapshot | null, outbox: Pending[]): (O
       }
     }
   }
+  for (const { op } of outbox) {
+    if (op.kind === "payOrder") {
+      const o = byId.get(op.orderId);
+      if (o) { o.unpaid = false; o.pending = true; }
+    }
+  }
+  return list;
+}
+
+/** まだ会計していない注文（先に厨房へ送ったもの）。送信待ちの操作も反映する */
+export function viewUnpaid(snapshot: ShopSnapshot | null, outbox: Pending[]): Order[] {
+  if (!snapshot) return [];
+  const paid = new Set(outbox.flatMap(({ op }) => (op.kind === "payOrder" ? [op.orderId] : [])));
+  const list: Order[] = (snapshot.unpaid ?? []).filter((o) => !paid.has(o.id));
+  const known = new Set(list.map((o) => o.id));
+  for (const o of viewOrders(snapshot, outbox)) if (o.unpaid && o.status !== "cancelled" && !known.has(o.id) && !paid.has(o.id)) list.push(o);
   return list;
 }
 

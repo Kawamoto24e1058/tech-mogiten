@@ -1871,3 +1871,23 @@ a.appbar__home:hover { background: #f2f2f3; }
   /* 会計の画面: 「会計を確定」を画面の下に貼りつけて、スクロールしなくても押せるように */
   .register--pay .pay > .btn--big { position: sticky; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 5; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); }
 }
+
+/* 先に厨房へ送る（会計はあとで） */
+.bottom-bar__btns { display: flex; gap: 8px; flex-shrink: 0; }
+.bottom-bar__btns .btn:not(.btn--big) { min-height: 56px; padding: 8px 12px; font-size: 0.95rem; }
+.bottom-bar__btns .btn--big { width: auto; padding: 8px 18px; }
+.pay__later { width: 100%; min-height: 48px; }
+.appbar__btn--unpaid { border-color: var(--warn-text); background: var(--warn-soft); color: var(--warn-text); font-weight: 700; }
+.tag--unpaid { background: var(--warn-soft); border-color: var(--warn-text); color: var(--warn-text); }
+.done__later { display: grid; justify-items: center; gap: 4px; padding: 14px 18px; border-radius: 12px; background: var(--warn-soft); color: var(--warn-text); text-align: center; }
+.done__later b:first-child { font-size: 1.15rem; }
+.unpaid-list { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--line); }
+.unpaid-row { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 56px; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; }
+.unpaid-row:hover { background: var(--subtle); }
+.unpaid-row__no { font-size: 1.15rem; }
+.unpaid-row__items { color: var(--muted); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unpaid-row__sum { font-variant-numeric: tabular-nums; }
+.unpaid-pay { display: grid; gap: 12px; }
+.unpaid-pay__items { margin: 0; color: var(--muted); }
+.unpaid-pay .quick { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.unpaid-done { display: grid; gap: 10px; justify-items: center; }

@@ -73,6 +73,8 @@ export interface Order {
   deletedAt?: number | null;
   /** 配達の注文（テック部版）。お金は届けたときに配達係が受け取る */
   delivery?: DeliveryInfo | null;
+  /** 先に厨房へ送って、まだ会計していない注文 */
+  unpaid?: boolean;
 }
 
 /** 配達の注文の印 */
@@ -113,6 +115,8 @@ export interface ShopSnapshot {
   discounts: DiscountRule[];
   /** 調理中・できた・直近に渡した注文 */
   orders: Order[];
+  /** 今日の、まだ会計していない注文（先に厨房へ送ったもの） */
+  unpaid?: Order[];
   registerCount: number;
   serverTime: number;
 }
@@ -137,6 +141,8 @@ export interface NewOrderInput {
   lines: { itemId: string; qty: number }[];
   received: number;
   createdAt: number;
+  /** true なら「先に厨房へ送る」（会計はあとで）。received は使わない */
+  unpaid?: boolean;
 }
 
 /** 端末から送る操作。すべて同じものを何度送っても結果が変わらない（冪等）。 */
@@ -145,7 +151,9 @@ export type Op =
   | { kind: "setStatus"; orderId: string; status: "cooking" | "ready" | "handed" }
   | { kind: "setSoldOut"; itemId: string; soldOut: boolean }
   /** 手元に戻っている札をもう一度使う。その札を持っていた注文は、できた→渡した にし、札を空きにする */
-  | { kind: "releaseTicket"; ticket: number };
+  | { kind: "releaseTicket"; ticket: number }
+  /** 先に厨房へ送った注文の会計 */
+  | { kind: "payOrder"; orderId: string; received: number };
 
 export type ClientMessage = { type: "op"; opId: string; op: Op } | { type: "ping" };
 
@@ -171,6 +179,8 @@ export interface DaySummary {
   closing: Closing | null;
   /** 配達の注文（テック部版）。売上には入れるが、配達係から受け取るまではレジの現金に入っていない */
   delivery?: { count: number; sales: number; unsettled: number };
+  /** 先に厨房へ送って、まだ会計していない注文。あるはずの現金には入らない */
+  unpaid?: { count: number; amount: number };
 }
 
 export interface Closing {

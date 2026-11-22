@@ -143,3 +143,14 @@ describe("配達の注文（テック部版）", () => {
     expect(s.expectedCash).toBe(1000 + 950 - 450);
   });
 });
+
+describe("先に厨房へ送った注文（未会計）", () => {
+  it("売上には入れるが、会計するまであるはずの現金に入れない", () => {
+    const day = "2026-11-22";
+    const orders = [order({ id: "a", day, total: 300 }), order({ id: "b", day, total: 200, unpaid: true })];
+    const s = summarize(day, orders, 1000, null);
+    expect(s.sales).toBe(500);
+    expect(s.unpaid).toEqual({ count: 1, amount: 200 });
+    expect(s.expectedCash).toBe(1300);
+  });
+});

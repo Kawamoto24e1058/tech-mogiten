@@ -163,6 +163,8 @@ export class ShopDO extends DurableObject<Env> {
     // 配達の注文（テック部版）。お金は届けたときに受け取り、配達係から受け取ったら settled_at を入れる
     if (!orderCols.includes("delivery")) this.sql.exec("ALTER TABLE orders ADD COLUMN delivery TEXT");
     if (!menuCols.includes("remote")) this.sql.exec("ALTER TABLE menu ADD COLUMN remote TEXT");
+    // 先に厨房へ送って、まだ会計していない注文
+    if (!orderCols.includes("unpaid")) this.sql.exec("ALTER TABLE orders ADD COLUMN unpaid INTEGER NOT NULL DEFAULT 0");
   }
 
   // ---------- 設定 ----------
@@ -386,6 +388,7 @@ export class ShopDO extends DurableObject<Env> {
       day: r.day as string,
       deletedAt: (r.deleted_at as number | null) ?? null,
       delivery: r.delivery ? (JSON.parse(r.delivery as string) as DeliveryInfo) : null,
+      unpaid: r.unpaid === 1,
     };
   }
 
@@ -472,6 +475,7 @@ export class ShopDO extends DurableObject<Env> {
       menu: this.menu(),
       discounts: this.discounts(),
       orders: this.activeOrders(),
+      unpaid: this.sql.exec("SELECT * FROM orders WHERE unpaid = 1 AND status != 'cancelled' AND deleted_at IS NULL AND day = ? ORDER BY seq", businessDay(Date.now())).toArray().map((r) => this.rowToOrder(r)),
       registerCount: this.ctx.getWebSockets("register").length,
       serverTime: Date.now(),
     };
@@ -540,6 +544,18 @@ export class ShopDO extends DurableObject<Env> {
         if (holders.length) this.audit("ticket.reuse", holders[0].id, { ticket: t, orders: holders.map((o) => ({ seq: o.seq, status: o.status })) });
         return;
       }
+      case "payOrder": {
+        // 先に厨房へ送った注文の会計。もう会計済みなら何もしない（同じ操作が届いても大丈夫）
+        const o = this.order(op.orderId);
+        if (!o) throw new HttpError(404, "注文が見つかりません");
+        if (o.status === "cancelled") throw new HttpError(409, "取り消された注文です");
+        if (!o.unpaid) return;
+        const rec = Math.floor(Number(op.received));
+        if (!Number.isFinite(rec) || rec < o.total) throw new HttpError(400, "預かり金が足りません");
+        this.sql.exec("UPDATE orders SET unpaid = 0, received = ?, change = ? WHERE id = ?", rec, rec - o.total, o.id);
+        this.audit("pay", o.id, { seq: o.seq, total: o.total, received: rec });
+        return;
+      }
       default:
         throw new HttpError(400, "不明な操作です");
     }
@@ -557,7 +573,8 @@ export class ShopDO extends DurableObject<Env> {
     const total = linesTotal(lines);
     if (total < 0) throw new HttpError(400, "合計がマイナスです。割引の数を確認してください");
     // 配達の注文は届けたときに払う。お釣りは配達係が渡すので、ここではちょうどとして記録する
-    const received = delivery ? total : Math.floor(Number(input.received));
+    const unpaid = !delivery && input.unpaid === true;
+    const received = delivery || unpaid ? total : Math.floor(Number(input.received));
     if (!Number.isFinite(received) || received < total) throw new HttpError(400, "預かり金が足りません");
 
     const count = this.shopPublic().ticketCount;
@@ -576,9 +593,9 @@ export class ShopDO extends DurableObject<Env> {
     }
 
     this.sql.exec(
-      `INSERT INTO orders (id, seq, ticket, status, lines, total, received, change, created_at, day, delivery)
-       VALUES (?, ?, ?, 'cooking', ?, ?, ?, ?, ?, ?, ?)`,
-      input.id, seq, ticket, JSON.stringify(lines), total, received, received - total, createdAt, businessDay(createdAt), delivery ? JSON.stringify(delivery) : null,
+      `INSERT INTO orders (id, seq, ticket, status, lines, total, received, change, created_at, day, delivery, unpaid)
+       VALUES (?, ?, ?, 'cooking', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id, seq, ticket, JSON.stringify(lines), total, received, received - total, createdAt, businessDay(createdAt), delivery ? JSON.stringify(delivery) : null, unpaid ? 1 : 0,
     );
     // 残り数を減らし、なくなったら売り切れにする
     const over: string[] = [];
@@ -591,7 +608,7 @@ export class ShopDO extends DurableObject<Env> {
     }
     if (over.length) warning = [warning, `${over.join("、")}は残り数を超えて売れています。厨房で確認してください`].filter(Boolean).join(" / ");
 
-    this.audit("create", input.id, { seq, ticket, total, received, warning, delivery: delivery ? `配-${delivery.no} ${delivery.place}` : undefined });
+    this.audit("create", input.id, { seq, ticket, total, received: unpaid ? undefined : received, unpaid: unpaid || undefined, warning, delivery: delivery ? `配-${delivery.no} ${delivery.place}` : undefined });
     return warning;
   }
 

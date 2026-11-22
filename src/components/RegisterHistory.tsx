@@ -67,6 +67,7 @@ export function RegisterHistory({
           <span className="order-row__meta">
             {timeOf(o.createdAt)} ・ {label(o.ticket)} ・ {isPending ? "未送信" : STATUS_JA[o.status]}
             {o.status === "cancelled" && o.cancelReason ? `（${o.cancelReason}）` : ""}
+            {o.unpaid && o.status !== "cancelled" ? " ・ 未会計" : ""}
           </span>
         </span>
         <span className="order-row__total">{yen(o.total)}</span>

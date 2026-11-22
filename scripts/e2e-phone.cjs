@@ -48,8 +48,37 @@ let ng = 0; const check = (c, m) => { console.log(`${c ? "OK  " : "NG  "} ${m}`)
   const d = await (await b.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
   await d.goto(`${C}/${s.id}/display`); await d.waitForTimeout(2500);
   check((await d.locator("body").textContent()).includes(no), `呼び出し表示に ${no} が出る`);
+  // ---------- 先に厨房へ送る（会計はあとで） ----------
+  await p1.click("text=次のお客さん");
+  await p1.locator(".menu-card__main", { hasText: "小籠包" }).click();
+  await p1.locator(".menu-card__main", { hasText: "小籠包" }).click();
+  await p1.click(".bottom-bar__btns button:has-text('先に厨房へ')");
+  await p1.locator(".done__later").waitFor({ timeout: 8000 });
+  await p1.locator(".done__ticket", { hasText: "#" }).waitFor({ timeout: 8000 });
+  const no2 = (await p1.locator(".done__ticket").textContent()).trim();
+  check((await p1.locator(".done__later").textContent()).includes("200円"), `先に厨房へ送れる（${no2}・あとで200円）`);
+  await k.locator(".kcard", { hasText: no2 }).waitFor({ timeout: 8000 });
+  check((await k.locator(".kcard", { hasText: no2 }).textContent()).includes("未会計"), "厨房の伝票に「未会計 200円」");
+  let sumU = await call(`/api/shops/${s.id}/admin/summary`, s.adminKey);
+  check(sumU.unpaid.amount === 200 && sumU.expectedCash === sumU.sales - 200, "未会計の分は、あるはずの現金に入らない");
+  // 別のスマホで会計
+  await p2.click("text=次のお客さん");
+  await p2.locator(".appbar__btn--unpaid").waitFor({ timeout: 8000 });
+  check((await p2.locator(".appbar__btn--unpaid").textContent()).includes("1"), "ほかのスマホのレジにも「未会計 1」");
+  await p2.locator(".appbar__btn--unpaid").click();
+  await p2.locator(".unpaid-row", { hasText: no2 }).click();
+  await p2.locator(".unpaid-pay .chip", { hasText: "500円" }).click();
+  await p2.click(".modal button:has-text('会計する')");
+  await p2.locator(".unpaid-done").waitFor();
+  check((await p2.locator(".unpaid-done").textContent()).includes("300"), "未会計から会計できる（お釣り300円）");
+  await p2.click(".modal button:has-text('閉じる')");
+  await p2.waitForTimeout(1500);
+  check(await p2.locator(".appbar__btn--unpaid").count() === 0, "会計すると「未会計」が消える");
+  await k.waitForTimeout(800);
+  check(!(await k.locator(".kcard", { hasText: no2 }).textContent()).includes("未会計"), "厨房の「未会計」も消える");
+
   const sum = await call(`/api/shops/${s.id}/admin/summary`, s.adminKey);
-  check(sum.orderCount === 2 && sum.sales === 400, `売上 2件・400円（${sum.orderCount}件・${sum.sales}円）`);
+  check(sum.orderCount === 3 && sum.sales === 600 && sum.unpaid.amount === 0 && sum.expectedCash === 600, `売上 3件・600円、あるはずの現金 600円（${sum.orderCount}件・${sum.sales}円・${sum.expectedCash}円）`);
   await call(`/api/shops/${s.id}/admin/shop/delete`, s.adminKey, { confirm: "Grok" });
   check(errs.length === 0, "画面のエラーなし " + errs.slice(0, 2).join(" / "));
   console.log(ng ? `${ng}件 失敗` : "すべて成功"); await b.close();

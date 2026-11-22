@@ -5,7 +5,7 @@ import { HubOrder } from "./Hub";
 import { AppBar, Banner, Btn, ConnBadge, Modal, Money, Notices, Page, useIsWide, useWakeLock } from "../components/ui";
 import { IconBack, IconBackspace, IconMinus, IconPlus } from "../components/icons";
 import type { CSSProperties } from "react";
-import { useConnection, viewMenu, viewOrders } from "../sync";
+import { useConnection, viewMenu, viewOrders, viewUnpaid } from "../sync";
 import { api, buzz, CLUB, load, save, uuid } from "../util";
 
 type CartLine = { itemId: string; qty: number };
@@ -50,7 +50,12 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   const [showTickets, setShowTickets] = useState(false);
   const setTicketChoice = (v: number | "none" | null) => { setTicketChoiceRaw(v); if (v !== null) setShowTickets(false); };
   const [confirmClear, setConfirmClear] = useState(false);
-  const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]; local: boolean; delivery?: { no: number; total: number } | null; deliveryError?: string } | null>(null);
+  const [done, setDone] = useState<{ ticket: string; change: number; orderId: string; cart: CartLine[]; local: boolean; delivery?: { no: number; total: number } | null; deliveryError?: string; unpaidTotal?: number } | null>(null);
+  // 先に厨房へ送って、まだ会計していない注文の一覧・会計
+  const [unpaidOpen, setUnpaidOpen] = useState(false);
+  const [paying, setPaying] = useState<string | null>(null);
+  const [payReceived, setPayReceived] = useState("");
+  const [paidChange, setPaidChange] = useState<number | null>(null);
   const [undoing, setUndoing] = useState(false);
   const [undoError, setUndoError] = useState("");
   // 使用中の札を押したとき（札が手元に戻っている＝渡し済みのはず）の確認
@@ -98,6 +103,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
   /** 残り数があるなら、それ以上は選べない */
   const atLimit = (id: string, stock: number | null) => stock != null && qtyOf(id) >= stock;
   const cookingCount = orders.filter((o) => o.status === "cooking").length;
+  const unpaidList = viewUnpaid(snapshot, outbox);
 
   const add = (itemId: string, delta: number) => {
     buzz();
@@ -122,9 +128,11 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
 
   /** 会計を確定する */
   const [sending, setSending] = useState(false);
-  const finish = async (rec: number) => {
+  /** later = true なら「先に厨房へ送る」（会計はあとで） */
+  const finish = async (rec: number, later = false) => {
     const local = lines.length > 0;
-    if (local && !(total >= 0 && rec >= total && ticketOk)) return;
+    if (local && !later && !(total >= 0 && rec >= total && ticketOk)) return;
+    if (later && !(local && total >= 0)) return;
     if (!local && remoteLines.length === 0) return;
     if (sending) return;
     buzz();
@@ -134,7 +142,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
     if (local) {
       conn.send({
         kind: "createOrder",
-        order: { id, ticket, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })), received: rec, createdAt: Date.now() },
+        order: { id, ticket, lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })), received: later ? 0 : rec, createdAt: Date.now(), ...(later ? { unpaid: true } : {}) },
       });
     }
     // 配達メニューの分は、配達センター経由でその店に頼む
@@ -155,7 +163,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         setSending(false);
       }
     }
-    setDone({ ticket: local ? label(ticket) : "", change: local ? rec - total : 0, orderId: local ? id : "", cart: localCart, local, delivery, deliveryError });
+    setDone({ ticket: local ? label(ticket) : "", change: local && !later ? rec - total : 0, orderId: local ? id : "", cart: localCart, local, delivery, deliveryError, unpaidTotal: later ? total : undefined });
     setUndoError("");
     reset();
     // 配達を頼めなかったときは、配達の商品をカゴに戻しておく（もう一度押せるように）
@@ -222,12 +230,62 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       right={
         <>
           {snapshot && <span className="queue" title="調理を待っている注文の数">調理中 <b>{cookingCount}</b></span>}
+          {unpaidList.length > 0 && <button className="appbar__btn appbar__btn--unpaid" onClick={() => { setUnpaidOpen(true); setPaying(null); setPaidChange(null); }}>未会計 <b>{unpaidList.length}</b></button>}
           {inHub && <button className={`appbar__btn appbar__btn--delivery ${delivering ? "is-on" : ""}`} onClick={() => setDelivering(!delivering)}>{delivering ? "レジに戻る" : "配達を頼む"}</button>}
           {snapshot && <button className="appbar__btn" onClick={() => setHistoryOpen(true)}>履歴</button>}
           <ConnBadge status={status} pending={outbox.length} />
         </>
       }
     />
+  );
+  const payTarget = paying ? unpaidList.find((o) => o.id === paying) ?? null : null;
+  const payNum = Number(payReceived || 0);
+  const unpaidModal = unpaidOpen && (
+    <Modal title={paidChange != null ? "会計しました" : payTarget ? `${payTarget.ticket != null ? `札 ${label(payTarget.ticket)}` : payTarget.seq > 0 ? `#${payTarget.seq}` : "送信中の注文"} の会計` : `未会計 ${unpaidList.length}件`} onClose={() => setUnpaidOpen(false)}>
+      {paidChange != null ? (
+        <div className="unpaid-done">
+          <div className="done__change"><span>お釣り</span><Money value={paidChange} /></div>
+          <Breakdown amount={paidChange} />
+          <div className="modal__actions">
+            {unpaidList.length > 0 && <Btn onClick={() => { setPaidChange(null); setPaying(null); }}>ほかの未会計へ</Btn>}
+            <Btn variant="accent" onClick={() => setUnpaidOpen(false)}>閉じる</Btn>
+          </div>
+        </div>
+      ) : payTarget ? (
+        <div className="unpaid-pay">
+          <p className="unpaid-pay__items">{payTarget.lines.filter((l) => l.price >= 0).map((l) => `${l.name}×${l.qty}`).join("、")}</p>
+          <div className="pay__line pay__line--total"><span>合計</span><Money value={payTarget.total} /></div>
+          <div className="quick" role="group" aria-label="よく使う金額">
+            {[payTarget.total, ...quickAmounts(payTarget.total).slice(0, 3)].filter((v, i, a) => a.indexOf(v) === i).map((v) => (
+              <button key={v} className={`chip ${payNum === v ? "is-on" : ""}`} onClick={() => setPayReceived(String(v))}>{v === payTarget.total ? "ちょうど" : `${v.toLocaleString()}円`}</button>
+            ))}
+          </div>
+          <label className="field">お預かり<span className="input-unit"><input className="input" inputMode="numeric" value={payReceived} onChange={(e) => setPayReceived(e.target.value.replace(/\D/g, "").slice(0, 7))} aria-label="お預かり" />円</span></label>
+          {payReceived !== "" && payNum >= payTarget.total && <div className="pay__change is-ready"><span>お釣り</span><Money value={payNum - payTarget.total} /></div>}
+          <div className="modal__actions">
+            <Btn variant="ghost" onClick={() => setPaying(null)}>戻る</Btn>
+            <Btn variant="accent" disabled={payReceived === "" || payNum < payTarget.total} onClick={() => {
+              buzz();
+              conn.send({ kind: "payOrder", orderId: payTarget.id, received: payNum });
+              setPaidChange(payNum - payTarget.total);
+            }}>{payReceived !== "" && payNum < payTarget.total ? `あと ${yen(payTarget.total - payNum)} 必要です` : "会計する"}</Btn>
+          </div>
+        </div>
+      ) : (
+        <ul className="unpaid-list">
+          {unpaidList.length === 0 && <p className="hint">未会計の注文はありません。</p>}
+          {unpaidList.map((o) => (
+            <li key={o.id}>
+              <button className="unpaid-row" onClick={() => { setPaying(o.id); setPayReceived(""); }}>
+                <b className="unpaid-row__no">{o.ticket != null ? `札 ${label(o.ticket)}` : o.seq > 0 ? `#${o.seq}` : "送信中"}</b>
+                <span className="unpaid-row__items">{o.lines.filter((l) => l.price >= 0).map((l) => `${l.name}×${l.qty}`).join("、")}</span>
+                <b className="unpaid-row__sum">{yen(o.total)}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
   );
   const historyModal = historyOpen && (
     <RegisterHistory
@@ -280,8 +338,17 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
                   {doneSeq <= 0 && <p className="hint">番号をもらっています…（電波がないときは、つながると番号が出ます）</p>}
                 </>
               )}
-              <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
-              <Breakdown amount={done.change} />
+              {done.unpaidTotal != null ? (
+                <div className="done__later" role="status">
+                  <b>厨房に送りました（会計はまだ）</b>
+                  <span>あとで <b>{yen(done.unpaidTotal)}</b> を受け取り、上の「未会計」から会計してください</span>
+                </div>
+              ) : (
+                <>
+                  <div className="done__change"><span>お釣り</span><Money value={done.change} /></div>
+                  <Breakdown amount={done.change} />
+                </>
+              )}
             </>
           )}
           {done.delivery && (
@@ -300,6 +367,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
           {done.local && <button className="link done__undo" onClick={() => void undo()} disabled={undoing}>{undoing ? "取り消しています…" : "間違えた（この会計を取り消して入力し直す）"}</button>}
         </main>
         {historyModal}
+      {unpaidModal}
+        {unpaidModal}
       </Page>
     );
   }
@@ -413,6 +482,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         ))}
         <button className="key key--sub" onClick={() => setReceived((r) => r.slice(0, -1))} aria-label="1文字消す"><IconBackspace size={24} /></button>
       </div>
+      {lines.length > 0 && <Btn className="pay__later" onClick={() => void finish(0, true)} disabled={sending || total < 0}>先に厨房へ送る（会計はあとで）</Btn>}
       <Btn variant="accent" big onClick={confirm} disabled={!canConfirm}>
         {lines.length === 0 ? (remoteLines.length > 0 ? (sending ? "頼んでいます…" : "配達を頼む") : "商品を選んでください") : total < 0 ? "合計がマイナスです（割引を確認）" : !ticketOk ? "① 札を押してください" : received === "" ? "受け取った金額を入れてください" : shortBy > 0 ? `あと ${yen(shortBy)} 必要です` : `${ticket != null ? `札 ${ticketText} で` : ""}会計を確定${remoteLines.length > 0 ? "（配達も頼む）" : ""}`}
       </Btn>
@@ -507,6 +577,8 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
         {clearModal}
         {reuseModal}
         {historyModal}
+      {unpaidModal}
+        {unpaidModal}
       </Page>
     );
   }
@@ -536,7 +608,12 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
             </div>
             {lines.length === 0 && remoteLines.length > 0
               ? <Btn variant="accent" big disabled={sending} onClick={() => void finish(0)}>{sending ? "頼んでいます…" : "配達を頼む"}</Btn>
-              : <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ</Btn>}
+              : (
+                <div className="bottom-bar__btns">
+                  <Btn disabled={lines.length === 0 || total < 0 || sending} onClick={() => void finish(0, true)}>先に厨房へ</Btn>
+                  <Btn variant="accent" big disabled={lines.length === 0} onClick={() => setStep("pay")}>お会計へ</Btn>
+                </div>
+              )}
           </div>
         </>
       ) : (
@@ -549,6 +626,7 @@ export function Register({ shopId, code, onAuthError }: { shopId: string; code: 
       {clearModal}
       {reuseModal}
       {historyModal}
+      {unpaidModal}
     </Page>
   );
 }

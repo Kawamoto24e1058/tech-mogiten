@@ -81,8 +81,9 @@ export function Kitchen({ shopId, code, onAuthError }: { shopId: string; code: s
             <span className={`kcard__time ${mins >= 10 ? "is-late" : ""}`}>{mins === 0 ? "たった今" : `${mins}分前`}</span>
           </div>
         </div>
-        {(o.pending || (o.ticket != null && dup.has(o.ticket))) && (
+        {(o.pending || o.unpaid || (o.ticket != null && dup.has(o.ticket))) && (
           <div className="kcard__tags">
+            {o.unpaid && <span className="tag tag--unpaid">未会計 {yen(o.total)}</span>}
             {o.pending && <span className="tag">未送信</span>}
             {o.ticket != null && dup.has(o.ticket) && <span className="tag tag--danger">札が重複</span>}
           </div>

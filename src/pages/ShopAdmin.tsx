@@ -654,7 +654,8 @@ function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
   const entered = byCount ? DENOMINATIONS.some((d) => den[d] !== "") : total !== "";
   const floatNum = Number(float || 0);
   const unsettled = sum.delivery?.unsettled ?? 0;
-  const cashSales = sum.sales - unsettled; // レジに入っているはずの売上（配達係からまだ受け取っていない分を除く）
+  const unpaidAmt = sum.unpaid?.amount ?? 0;
+  const cashSales = sum.sales - unsettled - unpaidAmt; // レジに入っているはずの売上（配達係から未精算・まだ会計していない分を除く）
   const expected = floatNum + cashSales;
   const diff = counted - expected;
   const stale = sum.closing && (sum.closing.expected !== sum.expectedCash || floatNum !== sum.floatCash);
@@ -705,10 +706,11 @@ function ClosingTab({ sum, call, setSum, setInfo, onCsv }: {
         <h3 className="panel__title"><span className="step__no">3</span>確認して記録</h3>
         <dl className="result">
           <div><dt>最初に入れたお金</dt><dd>{yen(floatNum)}</dd></div>
-          <div><dt>＋ 今日の売上{unsettled > 0 ? "（配達係から未精算の分を除く）" : ""}</dt><dd>{yen(cashSales)}</dd></div>
+          <div><dt>＋ 今日の売上{unsettled > 0 || unpaidAmt > 0 ? "（未精算・未会計の分を除く）" : ""}</dt><dd>{yen(cashSales)}</dd></div>
           <div className="result__sum"><dt>＝ あるはずのお金</dt><dd>{yen(expected)}</dd></div>
           <div><dt>今レジにあるお金</dt><dd>{entered ? yen(counted) : "—"}</dd></div>
         </dl>
+        {unpaidAmt > 0 && <Banner kind="warn">まだ会計していない注文（先に厨房へ送ったもの）が {sum.unpaid!.count}件・{yen(unpaidAmt)} あります。レジの「未会計」から会計するか、払われなかったものは「注文」から取り消してから締めてください。</Banner>}
         {unsettled > 0 && <Banner kind="warn">配達係からまだ受け取っていないお金が {yen(unsettled)} あります。受け取ってレジに入れたら、配達係の画面で「レジに渡した」を押してから締めてください。</Banner>}
         {entered ? (
           <div className={`diff ${diff === 0 ? "is-ok" : "is-ng"}`}>

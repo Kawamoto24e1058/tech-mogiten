@@ -147,6 +147,8 @@ export function summarize(
   const sales = valid.reduce((s, o) => s + o.total, 0);
   const deliveries = valid.filter((o) => o.delivery);
   const deliveryUnsettled = deliveries.filter((o) => !o.delivery!.settledAt).reduce((s, o) => s + o.total, 0);
+  const unpaidList = valid.filter((o) => o.unpaid);
+  const unpaidAmount = unpaidList.reduce((s, o) => s + o.total, 0);
 
   const items = new Map<string, { itemId: string; name: string; qty: number; amount: number }>();
   for (const o of valid) {
@@ -178,9 +180,10 @@ export function summarize(
     cancelledAmount: cancelled.reduce((s, o) => s + o.total, 0),
     floatCash,
     // 配達の注文は、配達係からお金を受け取るまでレジには入っていない
-    expectedCash: floatCash + sales - deliveryUnsettled,
+    expectedCash: floatCash + sales - deliveryUnsettled - unpaidAmount,
     closing,
     delivery: { count: deliveries.length, sales: deliveries.reduce((s, o) => s + o.total, 0), unsettled: deliveryUnsettled },
+    unpaid: { count: unpaidList.length, amount: unpaidAmount },
   };
 }
 
