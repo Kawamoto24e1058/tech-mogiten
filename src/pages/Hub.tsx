@@ -226,8 +226,8 @@ export function HubOrder({ embed }: { embed?: { key: string; shopId: string; onB
     if (!key) return;
     hub<{ place: { id: string; name: string } | null; shops: HubShopMenu[] }>("/menu", key, undefined, sid).then((m) => { setMenu(m); setError(""); }).catch((e) => setError(e.message));
   }, [key, sid]);
-  useEffect(() => { loadMenu(); const t = setInterval(loadMenu, 30000); return () => clearInterval(t); }, [loadMenu]);
-  const board = usePoll(() => (key ? hub<Board>("/board", key, undefined, sid) : Promise.resolve(null)), 5000, [key, sid]);
+  useEffect(() => { loadMenu(); const t = setInterval(() => { if (document.visibilityState === "visible") loadMenu(); }, 60000); return () => clearInterval(t); }, [loadMenu]);
+  const board = usePoll(() => (key ? hub<Board>("/board", key, undefined, sid) : Promise.resolve(null)), 20000, [key, sid]);
 
   if (!key) return <div className="page page--grid"><HubHeader title="配達の注文" /><main className="recover"><Banner kind="warn">配達センターの管理者から届いた「配達注文用リンク」を開いてください。</Banner></main></div>;
 
@@ -350,7 +350,7 @@ export function HubOrder({ embed }: { embed?: { key: string; shopId: string; onB
 export function HubCourier() {
   const placeOrCourier = useHubKey("courier");
   const key = placeOrCourier;
-  const { data, error, reload } = usePoll(() => (key ? hub<Board>("/board", key) : Promise.resolve(null)), 4000, [key]);
+  const { data, error, reload } = usePoll(() => (key ? hub<Board>("/board", key) : Promise.resolve(null)), 10000, [key]);
   const [busyId, setBusyId] = useState("");
   const act = async (path: string, body: unknown = {}) => {
     setBusyId(path);

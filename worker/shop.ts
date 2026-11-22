@@ -165,6 +165,10 @@ export class ShopDO extends DurableObject<Env> {
     if (!menuCols.includes("remote")) this.sql.exec("ALTER TABLE menu ADD COLUMN remote TEXT");
     // 先に厨房へ送って、まだ会計していない注文
     if (!orderCols.includes("unpaid")) this.sql.exec("ALTER TABLE orders ADD COLUMN unpaid INTEGER NOT NULL DEFAULT 0");
+    // 読み取り行数（Cloudflare の無料枠で数えられる）を抑えるための索引
+    this.sql.exec("CREATE INDEX IF NOT EXISTS orders_unpaid ON orders(unpaid) WHERE unpaid = 1");
+    this.sql.exec("CREATE INDEX IF NOT EXISTS orders_ready_at ON orders(ready_at)");
+    this.sql.exec("CREATE INDEX IF NOT EXISTS audit_day ON audit(day)");
   }
 
   // ---------- 設定 ----------

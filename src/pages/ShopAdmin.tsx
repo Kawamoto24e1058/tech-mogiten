@@ -77,7 +77,7 @@ export function ShopAdmin({ shopId, code, onAuthError }: { shopId: string; code:
 
   useEffect(() => {
     void refresh();
-    const t = setInterval(() => void refresh(), 15000);
+    const t = setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 30000);
     return () => clearInterval(t);
   }, [refresh]);
 

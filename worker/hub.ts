@@ -63,6 +63,8 @@ export class DeliveryHub extends DurableObject<Env> {
           id TEXT PRIMARY KEY, no INTEGER NOT NULL, day TEXT NOT NULL, place_id TEXT NOT NULL, place_name TEXT NOT NULL, note TEXT NOT NULL,
           status TEXT NOT NULL, parts TEXT NOT NULL, total INTEGER NOT NULL, created_at INTEGER NOT NULL, picked_at INTEGER, delivered_at INTEGER
         );
+        CREATE INDEX IF NOT EXISTS deliveries_day ON deliveries(day);
+        CREATE INDEX IF NOT EXISTS deliveries_status ON deliveries(status);
       `);
     });
   }
@@ -305,9 +307,10 @@ export class DeliveryHub extends DurableObject<Env> {
       }));
       for (const d of rows) for (const p of d.parts) p.status = status.get(p.orderId) ?? (d.status === "delivered" ? "handed" : d.status === "cancelled" ? "cancelled" : undefined);
       // 配達係の手元のお金（届けたが、まだ各店のレジに渡していない分）
+      // 読み取り行数を抑えるため、届けた配達は1回だけ読む
+      const delivered = this.sql.exec("SELECT * FROM deliveries WHERE status = 'delivered'").toArray().map((r) => this.row(r));
       const cash = shops.map((s) => {
-        const list = this.sql.exec("SELECT * FROM deliveries WHERE status = 'delivered'").toArray().map((r) => this.row(r))
-          .flatMap((d) => d.parts.filter((p) => p.shopId === s.id && !p.settledAt));
+        const list = delivered.flatMap((d) => d.parts.filter((p) => p.shopId === s.id && !p.settledAt));
         return { shopId: s.id, shopName: s.name, color: s.color, amount: list.reduce((a, p) => a + p.total, 0), count: list.length };
       });
       return json({ role: who.role, place: who.place ? { id: who.place.id, name: who.place.name } : null, deliveries: rows, cash });
