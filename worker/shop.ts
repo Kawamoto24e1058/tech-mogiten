@@ -587,7 +587,7 @@ export class ShopDO extends DurableObject<Env> {
 
     const now = Date.now();
     let createdAt = Math.floor(Number(input.createdAt));
-    if (!Number.isFinite(createdAt) || createdAt < now - 24 * 3600_000 || createdAt > now + 5 * 60_000) createdAt = now;
+    if (!Number.isFinite(createdAt) || createdAt < now - 7 * 24 * 3600_000 || createdAt > now + 5 * 60_000) createdAt = now;
     const seq = (this.sql.exec<{ m: number | null }>("SELECT MAX(seq) AS m FROM orders").one().m ?? 0) + 1;
 
     let warning: string | undefined;
@@ -706,7 +706,14 @@ export class ShopDO extends DurableObject<Env> {
       ws.send(JSON.stringify({ type: "ack", opId: msg.opId, ok: true, error: warning } satisfies ServerMessage));
       this.broadcast();
     } catch (e) {
-      ws.send(JSON.stringify({ type: "ack", opId: msg.opId, ok: false, error: e instanceof Error ? e.message : "エラー" } satisfies ServerMessage));
+      if (!(e instanceof HttpError)) {
+        // 一時的な失敗（Cloudflare の上限・障害など）。失敗の返事を返すと端末が注文を捨ててしまうので返さず、
+        // つなぎ直させて未送信の操作を送り直してもらう（注文は ID で重複を防いでいる）
+        console.error("op failed (retry)", msg.op.kind, e instanceof Error ? e.message : e);
+        try { ws.close(1011, "retry"); } catch { /* 切断済み */ }
+        return;
+      }
+      ws.send(JSON.stringify({ type: "ack", opId: msg.opId, ok: false, error: e.message } satisfies ServerMessage));
     }
   }
 
